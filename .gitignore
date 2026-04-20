@@ -210,3 +210,12 @@ raw_data/*
 !raw_data/.gitkeep
 
 token/
+
+jobs/*
+!jobs/.gitkeep
+
+stockfish/*
+!stockfish/.gitkeep
+
+data/*
+!data/.gitkeep
