@@ -4,16 +4,16 @@ Chess Move Predictor — train and evaluate a LoRA-finetuned Mistral model.
 Usage
 -----
 # Train from a single CSV
-python run_model.py train --data_path data/games.csv --output_dir outputs/run1
+python run_model.py train --data_path data/games.csv --train_output_dir outputs/run1
 
 # Train from a pre-split folder (train.csv / eval.csv / test.csv)
-python run_model.py train --data_path data/lichess_all_players_split_1_s42_d1 --output_dir outputs/run1
+python run_model.py train --data_path data/lichess_all_players_split_1_s42_d1 --train_output_dir outputs/run1
 
 # Evaluate a saved checkpoint
 python run_model.py test --data_path data/games.csv --model_path outputs/run1/checkpoint-238
 
 # Train then immediately evaluate
-python run_model.py both --data_path data/games.csv --output_dir outputs/run1
+python run_model.py both --data_path data/games.csv --train_output_dir outputs/run1
 """
 
 import argparse
@@ -513,11 +513,11 @@ def run_train(args):
         LoraConfig(r=8, lora_alpha=16, lora_dropout=0.05, task_type=TaskType.CAUSAL_LM),
     )
 
-    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+    Path(args.train_output_dir).mkdir(parents=True, exist_ok=True)
     trainer = Trainer(
         model=model,
         args=TrainingArguments(
-            output_dir=args.output_dir,
+            output_dir=args.train_output_dir,
             per_device_train_batch_size=args.batch_size,
             gradient_accumulation_steps=2,
             num_train_epochs=args.epochs,
@@ -533,7 +533,7 @@ def run_train(args):
         eval_dataset=eval_dataset,
     )
     trainer.train()
-    log.info("Training done. Outputs: %s", args.output_dir)
+    log.info("Training done. Outputs: %s", args.train_output_dir)
     return model, tokenizer, test_ex_df, sf_path
 
 
@@ -571,7 +571,7 @@ def run_test(args, model=None, tokenizer=None, eval_examples_df=None, sf_path=No
     log.info("\n%s\nCACHE BASELINE SUMMARY\n%s\n%s",
              "=" * 60, summary_df.round(4).to_string(index=False), "=" * 60)
 
-    eval_out = args.eval_output_dir or args.output_dir
+    eval_out = args.eval_output_dir or args.train_output_dir
     if eval_out:
         Path(eval_out).mkdir(parents=True, exist_ok=True)
         detail_df.to_csv(Path(eval_out) / "eval_detail.csv", index=False)
@@ -596,10 +596,10 @@ def parse_args():
                         "train.csv, eval.csv (or valid.csv), and test.csv.")
     p.add_argument("--model_path", default=None,
                    help="Checkpoint dir to load for test/both. Defaults to <output_dir>/checkpoint-last.")
-    p.add_argument("--output_dir", default="outputs/chess_lora",
+    p.add_argument("--train_output_dir", default="outputs/chess_lora",
                    help="Directory for saved model checkpoints and training logs.")
     p.add_argument("--eval_output_dir", default=None,
-                   help="Directory for eval CSVs. Defaults to --output_dir if not set.")
+                   help="Directory for eval CSVs. Defaults to --train_output_dir if not set.")
 
     # Model config
     p.add_argument("--model_id", default="mistralai/Mistral-7B-v0.1",

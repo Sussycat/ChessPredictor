@@ -76,14 +76,15 @@ def get_config_details(model_key, dataset_key, mode):
     dataset_subpath = CONFIG.get("dataset_alts", {}).get(dataset_key, dataset_key)
     dataset_path = os.path.join(base_data_dir, dataset_subpath)
 
-    base_output_dir = smart_path(CONFIG.get("output_dir", "results/"))
     safe_model = model_key.replace("/", "_")
 
-    # Training checkpoints: output_dir/train/{dataset}/{model}
-    checkpoint_path = os.path.join(base_output_dir, dataset_key, "train", safe_model)
+    # Training checkpoints: train_output_dir/{dataset}/{model}
+    base_train_dir = smart_path(CONFIG.get("train_output_dir", "results/train/"))
+    checkpoint_path = os.path.join(base_train_dir, dataset_key, safe_model)
 
-    # Eval results: output_dir/eval/{dataset}/{model}
-    eval_output_path = os.path.join(base_output_dir, dataset_key, "eval", safe_model)
+    # Eval results: eval_output_dir/{dataset}/{model}
+    base_eval_dir = smart_path(CONFIG.get("eval_output_dir", "results/eval/"))
+    eval_output_path = os.path.join(base_eval_dir, dataset_key, safe_model)
 
     stockfish_path = smart_path(CONFIG.get("stockfish_path", ""))
     max_eval_positions = CONFIG.get("max_eval_positions", None)
@@ -182,7 +183,7 @@ def main():
             "python", TARGET_SCRIPT,
             "--mode", mode,
             "--data_path",  cfg["dataset_path"],
-            "--output_dir", cfg["checkpoint_path"],
+            "--train_output_dir", cfg["checkpoint_path"],
             "--model_id",   cfg["model_path"],
             "--epochs",     str(cfg["epochs"]),
             "--batch_size", str(cfg["batch_size"]),
