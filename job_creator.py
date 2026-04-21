@@ -35,7 +35,7 @@ SLURM_TEMPLATE = """#!/bin/bash
 
 # --- SETUP ENVIRONMENT ---
 module load CUDA/11.8.0
-source /sw/eb/sw/Miniconda3/23.10.0-1/bin/activate chess
+source /sw/eb/sw/Miniconda3/23.10.0-1/bin/activate {conda_env}
 
 cd {work_dir}
 
@@ -132,6 +132,8 @@ def main():
     )
     parser.add_argument("-d", "--dataset", nargs="+", help="Dataset keys to include (default: all).")
     parser.add_argument("-m", "--model", nargs="+", help="Model keys to include (default: all).")
+    parser.add_argument("--conda_env", default="chess",
+                        help="Conda environment name to activate in the SLURM script.")
     parser.add_argument("--hf_token", default=None,
                         help="HuggingFace token passed to run_model.py.")
     parser.add_argument("--slurm-dir", default=os.path.join(main_dir, "jobs"))
@@ -202,6 +204,7 @@ def main():
                 log_path=log_filename,
                 work_dir=main_dir,
                 cmd_str=cmd_str,
+                conda_env=args.conda_env,
             )
             if args.dry_run:
                 print(f"\n[DRY] Preview: {slurm_filename}")
