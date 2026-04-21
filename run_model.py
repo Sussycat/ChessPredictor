@@ -532,7 +532,7 @@ def run_train(args):
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
     )
-    trainer.train()
+    trainer.train(resume_from_checkpoint=args.resume_from_checkpoint or None)
     log.info("Training done. Outputs: %s", args.train_output_dir)
     return model, tokenizer, test_ex_df, sf_path
 
@@ -596,6 +596,9 @@ def parse_args():
                         "train.csv, eval.csv (or valid.csv), and test.csv.")
     p.add_argument("--model_path", default=None,
                    help="Checkpoint dir to load for test/both. Defaults to <output_dir>/checkpoint-last.")
+    p.add_argument("--resume_from_checkpoint", default=None,
+                   help="Path to a checkpoint to resume training from. "
+                        "Pass 'true' to resume from the latest checkpoint in --train_output_dir.")
     p.add_argument("--train_output_dir", default="outputs/chess_lora",
                    help="Directory for saved model checkpoints and training logs.")
     p.add_argument("--eval_output_dir", default=None,
