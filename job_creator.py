@@ -184,7 +184,7 @@ def main():
             "--mode", mode,
             "--data_path",  cfg["dataset_path"],
             "--train_output_dir", cfg["checkpoint_path"],
-            "--model_id",   cfg["model_path"],
+            "--model_path", cfg["model_path"],
             "--epochs",     str(cfg["epochs"]),
             "--batch_size", str(cfg["batch_size"]),
             "--seed",       str(cfg["seed"]),
@@ -192,7 +192,6 @@ def main():
         ] + [str(k) for k in cfg["eval_k"]]
 
         if mode in ("test", "both"):
-            cmd_list += ["--model_path", cfg["checkpoint_path"]]
             cmd_list += ["--eval_output_dir", cfg["eval_output_path"]]
         if cfg["stockfish_path"]:
             cmd_list += ["--stockfish_path", cfg["stockfish_path"]]

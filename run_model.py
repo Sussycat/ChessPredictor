@@ -343,15 +343,17 @@ def load_base_model(model_id, use_4bit=False):
     return model, tokenizer
 
 
-def load_lora_checkpoint(checkpoint_path, model_id, use_4bit=False):
+def load_lora_checkpoint(checkpoint_path, use_4bit=False):
+    from peft import PeftConfig
+    base_model_id = PeftConfig.from_pretrained(checkpoint_path).base_model_name_or_path
     bnb = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype="float16")
     base = AutoModelForCausalLM.from_pretrained(
-        model_id, device_map="auto",
+        base_model_id, device_map="auto",
         quantization_config=bnb if use_4bit else None,
         torch_dtype=None if use_4bit else torch.float16,
     )
     model = PeftModel.from_pretrained(base, checkpoint_path)
-    tokenizer = AutoTokenizer.from_pretrained(model_id)
+    tokenizer = AutoTokenizer.from_pretrained(base_model_id)
     tokenizer.pad_token = tokenizer.eos_token
     return model, tokenizer
 
@@ -471,7 +473,7 @@ def run_train(args):
     log.info("Loading dataset: %s", args.data_path)
     train_ex_df, eval_ex_df, test_ex_df = get_data_splits(args.data_path, seed=args.seed)
 
-    model, tokenizer = load_base_model(args.model_id, use_4bit=args.use_4bit)
+    model, tokenizer = load_base_model(args.model_path, use_4bit=args.use_4bit)
 
     # Use precomputed Stockfish predictions from the dataset when available.
     # The engine is still needed for eval baseline; for preprocessing it is
@@ -542,7 +544,7 @@ def run_test(args, model=None, tokenizer=None, eval_examples_df=None, sf_path=No
         if not args.model_path:
             raise ValueError("--model_path is required for test mode.")
         log.info("Loading checkpoint: %s", args.model_path)
-        model, tokenizer = load_lora_checkpoint(args.model_path, args.model_id, use_4bit=args.use_4bit)
+        model, tokenizer = load_lora_checkpoint(args.model_path, use_4bit=args.use_4bit)
 
     if sf_path is None:
         sf_path = args.stockfish_path or detect_stockfish_path()
@@ -605,9 +607,6 @@ def parse_args():
                    help="Directory for eval CSVs. Defaults to --train_output_dir if not set.")
 
     # Model config
-    p.add_argument("--model_id", default="mistralai/Mistral-7B-v0.1",
-                   help="Base model: HuggingFace model ID (e.g. 'mistralai/Mistral-7B-v0.1') "
-                        "or local path to a model directory (e.g. './models/mistral-7b').")
     p.add_argument("--stockfish_path", default=None,
                    help="Path to Stockfish binary (auto-detected if omitted).")
 
