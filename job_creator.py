@@ -172,7 +172,7 @@ def main():
         # Build command
         cmd_list = [
             "python", TARGET_SCRIPT,
-            args.mode,
+            "--mode", args.mode,
             "--data_path",  cfg["dataset_path"],
             "--output_dir", cfg["output_path"],
             "--model_id",   cfg["model_path"],
