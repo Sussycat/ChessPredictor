@@ -26,8 +26,8 @@
         }
     },
     "input_dir": "/scratch/user/nguye3hv/data/",
-    "train_output_dir": "/scratch/user/nguye3hv/train_results/",
-    "eval_output_dir": "eval_results/",
+    "train_output_dir": "/scratch/user/nguye3hv/checkpoints/",
+    "eval_output_dir": "results/",
     "dataset_alts":{
         "all_d1": "all_d1"
     },
