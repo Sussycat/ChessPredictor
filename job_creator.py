@@ -128,8 +128,8 @@ def main():
     parser.add_argument("-a", "--action", choices=["generate", "run"], default="generate")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
-        "--mode", choices=["train", "test", "both"], default="both",
-        help="run_model.py mode written into every generated script.",
+        "--mode", choices=["train", "test", "both"], default=None,
+        help="Override mode from key_mapping.json (train/test/both).",
     )
     parser.add_argument("-d", "--dataset", nargs="+", help="Dataset keys to include (default: all).")
     parser.add_argument("-m", "--model", nargs="+", help="Model keys to include (default: all).")
@@ -142,6 +142,13 @@ def main():
 
     if args.dry_run:
         print("\n--- DRY RUN MODE ---\n")
+
+    # Resolve modes: CLI --mode overrides key_mapping; config value can be str or list
+    if args.mode:
+        modes = [args.mode]
+    else:
+        cfg_mode = CONFIG.get("mode", "both")
+        modes = cfg_mode if isinstance(cfg_mode, list) else [cfg_mode]
 
     all_datasets = list(CONFIG.get("dataset_alts", {}).keys())
     all_models = list(CONFIG.get("model_alts", {}).keys())
@@ -157,23 +164,23 @@ def main():
         os.makedirs(log_dir, exist_ok=True)
         print(f"Scripts will be saved to: {slurm_dir}")
 
-    combinations = list(itertools.product(datasets, models))
-    print(f"Processing {len(combinations)} combinations | action={args.action} | mode={args.mode}")
+    combinations = list(itertools.product(modes, datasets, models))
+    print(f"Processing {len(combinations)} combinations | action={args.action} | modes={modes}")
 
     count = 0
-    for dataset_key, model_key in combinations:
+    for mode, dataset_key, model_key in combinations:
         if not validate_compatibility(dataset_key, model_key):
             print(f"  [SKIP] {dataset_key} x {model_key} — not in task_mapping")
             continue
 
-        cfg = get_config_details(model_key, dataset_key, args.mode)
+        cfg = get_config_details(model_key, dataset_key, mode)
         safe_model = model_key.replace("/", "_").replace(" ", "")
-        job_name = f"chess_{args.mode}_{dataset_key}_{safe_model}"
+        job_name = f"chess_{mode}_{dataset_key}_{safe_model}"
 
         # Build command
         cmd_list = [
             "python", TARGET_SCRIPT,
-            "--mode", args.mode,
+            "--mode", mode,
             "--data_path",  cfg["dataset_path"],
             "--output_dir", cfg["checkpoint_path"],
             "--model_id",   cfg["model_path"],
@@ -183,7 +190,7 @@ def main():
             "--eval_k",
         ] + [str(k) for k in cfg["eval_k"]]
 
-        if args.mode in ("test", "both"):
+        if mode in ("test", "both"):
             cmd_list += ["--model_path", cfg["checkpoint_path"]]
             cmd_list += ["--eval_output_dir", cfg["eval_output_path"]]
         if cfg["stockfish_path"]:

@@ -9,6 +9,7 @@
     "stockfish_path": "/scratch/user/nguye3hv/stockfish/stockfish-ubuntu-x86-64-avx2",
     "engine_depth": 10,
     "model_dir": "/scratch/user/nguye3hv/models/",
+    "mode": ["train", "test", "both"],
     "model_alts":{
         "Llama-3.2-11B": "Llama-3.2-11B-Vision-Instruct",
         "Llama-3.2-90B": "Llama-3.2-90B-Vision-Instruct",
