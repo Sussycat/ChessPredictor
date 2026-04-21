@@ -189,11 +189,11 @@ def get_board_after_moves(moves_played):
 
 def build_examples(df_mate, seed=42):
     rng = random.Random(seed)
-    even_moves = list(range(10, 35, 2))
+    black_moves = list(range(11, 35, 2))  # odd indices = black's moves
     examples = []
     for row in df_mate.dropna(subset=["moves"]).itertuples(index=False):
         tokens = str(row.moves).strip().split()
-        valid = [m for m in even_moves if m < len(tokens)]
+        valid = [m for m in black_moves if m < len(tokens)]
         if not valid:
             continue
         prompt_end = rng.choice(valid)
@@ -214,11 +214,14 @@ def build_examples(df_mate, seed=42):
             "label": tokens[prompt_end],
             "turn_index": prompt_end,
             "precomputed_sf": precomputed_sf,
+            "white_rating": getattr(row, "white_rating", 0),
+            "black_rating": getattr(row, "black_rating", 0),
         })
     return examples
 
 
-def build_prompt(prompt_moves, engine=None, k=10, depth=1, precomputed_sf="", force_stockfish=False):
+def build_prompt(prompt_moves, engine=None, k=10, depth=1, precomputed_sf="", force_stockfish=False,
+                 white_rating=0, black_rating=0):
     if precomputed_sf and not force_stockfish:
         sf_with_p = precomputed_sf.split()
     else:
@@ -231,6 +234,7 @@ def build_prompt(prompt_moves, engine=None, k=10, depth=1, precomputed_sf="", fo
         sf_with_p = add_p_to_pawn_moves_list(sf_moves)
     prompt_text = (
         "Chess move prediction.\n"
+        f"White Elo: {white_rating} | Black Elo: {black_rating}\n"
         f"Game: {prompt_moves}\n"
         f"Legal: {' '.join(sf_with_p)}\n"
         "Next move from legal list: "
@@ -244,6 +248,8 @@ def make_preprocess_fn(tokenizer, engine=None, max_length=280, force_stockfish=F
             example["prompt"], engine,
             precomputed_sf=example.get("precomputed_sf", ""),
             force_stockfish=force_stockfish,
+            white_rating=example.get("white_rating", 0),
+            black_rating=example.get("black_rating", 0),
         )
         label_text = extract_piece_and_target_square(example["label"])
         if label_text is None:
@@ -355,10 +361,11 @@ def load_lora_checkpoint(checkpoint_path, model_id, use_4bit=False):
 # ---------------------------------------------------------------------------
 
 def generate_model_topk(prompt_moves, model, tokenizer, engine=None, k=5, max_new_tokens=8,
-                        precomputed_sf="", force_stockfish=False):
+                        precomputed_sf="", force_stockfish=False, white_rating=0, black_rating=0):
     prompt_text, sf_moves = build_prompt(
         prompt_moves, engine,
         precomputed_sf=precomputed_sf, force_stockfish=force_stockfish,
+        white_rating=white_rating, black_rating=black_rating,
     )
     legal_labels = unique_in_order([normalize_label(m) for m in sf_moves])
 
@@ -417,6 +424,8 @@ def evaluate_cache_baseline(eval_examples_df, model, tokenizer, stockfish_path,
             llm_preds = generate_model_topk(
                 row["prompt"], model, tokenizer, engine, k=max_k,
                 precomputed_sf=precomputed_sf, force_stockfish=force_stockfish,
+                white_rating=row.get("white_rating", 0),
+                black_rating=row.get("black_rating", 0),
             )
             llm_ms = (time.time() - t0) * 1000
 
