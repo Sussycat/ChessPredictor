@@ -325,17 +325,25 @@ def get_data_splits(data_path, seed=42):
 # Model loading
 # ---------------------------------------------------------------------------
 
-def load_base_model(model_id):
+def load_base_model(model_id, use_4bit=False):
     bnb = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype="float16")
-    model = AutoModelForCausalLM.from_pretrained(model_id, device_map="auto", quantization_config=bnb)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id, device_map="auto",
+        quantization_config=bnb if use_4bit else None,
+        torch_dtype=None if use_4bit else torch.float16,
+    )
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     tokenizer.pad_token = tokenizer.eos_token
     return model, tokenizer
 
 
-def load_lora_checkpoint(checkpoint_path, model_id):
+def load_lora_checkpoint(checkpoint_path, model_id, use_4bit=False):
     bnb = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype="float16")
-    base = AutoModelForCausalLM.from_pretrained(model_id, quantization_config=bnb, device_map="auto")
+    base = AutoModelForCausalLM.from_pretrained(
+        model_id, device_map="auto",
+        quantization_config=bnb if use_4bit else None,
+        torch_dtype=None if use_4bit else torch.float16,
+    )
     model = PeftModel.from_pretrained(base, checkpoint_path)
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     tokenizer.pad_token = tokenizer.eos_token
@@ -454,7 +462,7 @@ def run_train(args):
     log.info("Loading dataset: %s", args.data_path)
     train_ex_df, eval_ex_df, test_ex_df = get_data_splits(args.data_path, seed=args.seed)
 
-    model, tokenizer = load_base_model(args.model_id)
+    model, tokenizer = load_base_model(args.model_id, use_4bit=args.use_4bit)
 
     # Use precomputed Stockfish predictions from the dataset when available.
     # The engine is still needed for eval baseline; for preprocessing it is
@@ -525,7 +533,7 @@ def run_test(args, model=None, tokenizer=None, eval_examples_df=None, sf_path=No
         if not args.model_path:
             raise ValueError("--model_path is required for test mode.")
         log.info("Loading checkpoint: %s", args.model_path)
-        model, tokenizer = load_lora_checkpoint(args.model_path, args.model_id)
+        model, tokenizer = load_lora_checkpoint(args.model_path, args.model_id, use_4bit=args.use_4bit)
 
     if sf_path is None:
         sf_path = args.stockfish_path or detect_stockfish_path()
@@ -602,6 +610,10 @@ def parse_args():
                    help="Max positions to evaluate (0 = all).")
     p.add_argument("--engine_depth", type=int, default=10,
                    help="Stockfish search depth used during evaluation.")
+
+    # Quantization
+    p.add_argument("--use_4bit", action="store_true",
+                   help="Load model in 4-bit NF4 (QLoRA). Default is 16-bit (float16).")
 
     # Stockfish override
     p.add_argument("--force_stockfish", action="store_true",
