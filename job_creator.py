@@ -76,16 +76,14 @@ def get_config_details(model_key, dataset_key, mode):
     dataset_subpath = CONFIG.get("dataset_alts", {}).get(dataset_key, dataset_key)
     dataset_path = os.path.join(base_data_dir, dataset_subpath)
 
-    # Output path for this run
     base_output_dir = smart_path(CONFIG.get("output_dir", "results/"))
     safe_model = model_key.replace("/", "_")
-    output_path = os.path.join(base_output_dir, mode, dataset_key, safe_model)
 
-    # LoRA checkpoint path: always the train output for this dataset/model combo
-    checkpoint_path = os.path.join(base_output_dir, "train", dataset_key, safe_model)
+    # Training checkpoints: output_dir/train/{dataset}/{model}
+    checkpoint_path = os.path.join(base_output_dir, dataset_key, "train", safe_model)
 
-    # Eval results go to a dedicated folder separate from training checkpoints
-    eval_output_path = os.path.join(base_output_dir, "eval", dataset_key, safe_model)
+    # Eval results: output_dir/eval/{dataset}/{model}
+    eval_output_path = os.path.join(base_output_dir, dataset_key, "eval", safe_model)
 
     stockfish_path = smart_path(CONFIG.get("stockfish_path", ""))
     max_eval_positions = CONFIG.get("max_eval_positions", None)
@@ -101,7 +99,6 @@ def get_config_details(model_key, dataset_key, mode):
         "num_gpus": num_gpus,
         "gpu_comma_str": gpu_comma_str,
         "dataset_path": dataset_path,
-        "output_path": output_path,
         "epochs": CONFIG.get("epochs", 1),
         "batch_size": CONFIG.get("batch_size", 8),
         "seed": CONFIG.get("seed", 42),
@@ -178,7 +175,7 @@ def main():
             "python", TARGET_SCRIPT,
             "--mode", args.mode,
             "--data_path",  cfg["dataset_path"],
-            "--output_dir", cfg["output_path"],
+            "--output_dir", cfg["checkpoint_path"],
             "--model_id",   cfg["model_path"],
             "--epochs",     str(cfg["epochs"]),
             "--batch_size", str(cfg["batch_size"]),
