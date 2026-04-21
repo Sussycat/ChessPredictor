@@ -6,7 +6,7 @@
     "model_max_length": 4096,
     "epochs": 1,
     "seed": 42,
-    "stockfish_path": "stockfish_linux/stockfish-ubuntu-x86-64-avx2",
+    "stockfish_path": "/scratch/user/nguye3hv/stockfish/stockfish-ubuntu-x86-64-avx2",
     "engine_depth": 10,
     "model_dir": "/scratch/user/nguye3hv/models/",
     "model_alts":{
@@ -23,7 +23,7 @@
             "Mixtral-8x7B": [0,1]
         }
     },
-    "input_dir": "data/",
+    "input_dir": "/scratch/user/nguye3hv/data/",
     "output_dir": "results/",
     "dataset_alts":{
         "all_d1": "all_d1"
