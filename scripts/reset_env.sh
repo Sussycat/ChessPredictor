@@ -3,7 +3,7 @@
 # --- CONFIGURATION ---
 # We define the scratch location explicitly to avoid Home directory quota issues
 SCRATCH_DIR="/scratch/user/nguye3hv"
-ENV_NAME="textee3"  # Create environment in Scratch
+ENV_NAME="chess"  # Create environment in Scratch
 PYTHON_VERSION="3.10"
 
 # --- 1. CACHE REDIRECTION (The Fix for "Disk Quota Exceeded") ---
