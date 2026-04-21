@@ -571,11 +571,12 @@ def run_test(args, model=None, tokenizer=None, eval_examples_df=None, sf_path=No
     log.info("\n%s\nCACHE BASELINE SUMMARY\n%s\n%s",
              "=" * 60, summary_df.round(4).to_string(index=False), "=" * 60)
 
-    if args.output_dir:
-        Path(args.output_dir).mkdir(parents=True, exist_ok=True)
-        detail_df.to_csv(Path(args.output_dir) / "eval_detail.csv", index=False)
-        summary_df.to_csv(Path(args.output_dir) / "eval_summary.csv", index=False)
-        log.info("Eval CSVs saved to %s", args.output_dir)
+    eval_out = args.eval_output_dir or args.output_dir
+    if eval_out:
+        Path(eval_out).mkdir(parents=True, exist_ok=True)
+        detail_df.to_csv(Path(eval_out) / "eval_detail.csv", index=False)
+        summary_df.to_csv(Path(eval_out) / "eval_summary.csv", index=False)
+        log.info("Eval CSVs saved to %s", eval_out)
 
 
 # ---------------------------------------------------------------------------
@@ -596,7 +597,9 @@ def parse_args():
     p.add_argument("--model_path", default=None,
                    help="Checkpoint dir to load for test/both. Defaults to <output_dir>/checkpoint-last.")
     p.add_argument("--output_dir", default="outputs/chess_lora",
-                   help="Directory for saved model, logs, and eval results.")
+                   help="Directory for saved model checkpoints and training logs.")
+    p.add_argument("--eval_output_dir", default=None,
+                   help="Directory for eval CSVs. Defaults to --output_dir if not set.")
 
     # Model config
     p.add_argument("--model_id", default="mistralai/Mistral-7B-v0.1",

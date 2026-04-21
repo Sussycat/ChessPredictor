@@ -20,7 +20,8 @@
         "default":{
             "default": [0],
             "Llama-3.2-90B": [0,1],
-            "Mixtral-8x7B": [0,1]
+            "Mixtral-8x7B": [0,1],
+            "Qwen3.5-9B": [0,1]
         }
     },
     "input_dir": "/scratch/user/nguye3hv/data/",

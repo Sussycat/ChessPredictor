@@ -84,6 +84,9 @@ def get_config_details(model_key, dataset_key, mode):
     # LoRA checkpoint path: always the train output for this dataset/model combo
     checkpoint_path = os.path.join(base_output_dir, "train", dataset_key, safe_model)
 
+    # Eval results go to a dedicated folder separate from training checkpoints
+    eval_output_path = os.path.join(base_output_dir, "eval", dataset_key, safe_model)
+
     stockfish_path = smart_path(CONFIG.get("stockfish_path", ""))
     max_eval_positions = CONFIG.get("max_eval_positions", None)
     engine_depth = CONFIG.get("engine_depth", None)
@@ -91,6 +94,7 @@ def get_config_details(model_key, dataset_key, mode):
     return {
         "model_path": model_path,
         "checkpoint_path": checkpoint_path,
+        "eval_output_path": eval_output_path,
         "stockfish_path": stockfish_path,
         "max_eval_positions": max_eval_positions,
         "engine_depth": engine_depth,
@@ -184,6 +188,7 @@ def main():
 
         if args.mode in ("test", "both"):
             cmd_list += ["--model_path", cfg["checkpoint_path"]]
+            cmd_list += ["--eval_output_dir", cfg["eval_output_path"]]
         if cfg["stockfish_path"]:
             cmd_list += ["--stockfish_path", cfg["stockfish_path"]]
         if args.hf_token:
