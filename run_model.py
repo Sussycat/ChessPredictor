@@ -501,7 +501,7 @@ def run_train(args):
 
     def _run_map(engine_):
         force = args.force_stockfish if engine_ is not None else False
-        fn = make_preprocess_fn(tokenizer, engine_, max_length=args.max_length, force_stockfish=force)
+        fn = make_preprocess_fn(tokenizer, engine_, max_length=args.max_output_length, force_stockfish=force)
         tr = train_raw.map(fn, remove_columns=train_raw.column_names)
         ev = eval_raw.map(fn, remove_columns=eval_raw.column_names)
         return tr, ev
