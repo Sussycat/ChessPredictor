@@ -10,5 +10,3 @@ transformers
 bitsandbytes>=0.46.1
 accelerate
 deepspeed
-causal-conv1d
-flash-linear-attention
