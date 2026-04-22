@@ -542,7 +542,7 @@ def run_train(args):
     def preprocess_logits_for_metrics(logits, labels):
         if isinstance(logits, tuple):
             logits = logits[0]
-        return logits.argmax(dim=-1), labels
+        return logits.argmax(dim=-1)
 
     def compute_metrics(eval_pred):
         import numpy as np
