@@ -540,19 +540,26 @@ def run_train(args):
     )
 
     def preprocess_logits_for_metrics(logits, labels):
+        if isinstance(logits, tuple):
+            logits = logits[0]
         return logits.argmax(dim=-1), labels
 
     def compute_metrics(eval_pred):
         import numpy as np
         from sklearn.metrics import f1_score
         pred_ids, label_ids = eval_pred
+        pred_ids = np.array(pred_ids)
+        label_ids = np.array(label_ids)
+        # Fallback: if preprocess_logits_for_metrics didn't run, pred_ids is [batch, seq, vocab]
+        if pred_ids.ndim == 3:
+            pred_ids = pred_ids.argmax(axis=-1)
         all_preds, all_labels = [], []
         for pred, label in zip(pred_ids, label_ids):
-            non_masked = np.where(np.array(label) != -100)[0]
+            non_masked = np.where(label != -100)[0]
             if len(non_masked) == 0 or non_masked[0] == 0:
                 continue
-            pos = non_masked[0]
-            all_preds.append(int(pred[pos - 1]))   # logit at pos-1 predicts token at pos
+            pos = int(non_masked[0])
+            all_preds.append(int(pred[pos - 1]))
             all_labels.append(int(label[pos]))
         if not all_labels:
             return {"accuracy": 0.0, "f1": 0.0}
