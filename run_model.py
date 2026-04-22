@@ -515,7 +515,11 @@ def run_train(args):
 
     model = get_peft_model(
         model,
-        LoraConfig(r=8, lora_alpha=16, lora_dropout=0.05, task_type=TaskType.CAUSAL_LM),
+        LoraConfig(
+            r=8, lora_alpha=16, lora_dropout=0.05, task_type=TaskType.CAUSAL_LM,
+            target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
+                            "gate_proj", "up_proj", "down_proj"],
+        ),
     )
 
     Path(args.train_output_dir).mkdir(parents=True, exist_ok=True)
