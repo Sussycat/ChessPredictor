@@ -189,7 +189,6 @@ def get_board_after_moves(moves_played):
 # ---------------------------------------------------------------------------
 
 def build_examples(df_mate, seed=42):
-    rng = random.Random(seed)
     black_moves = list(range(11, 35, 2))  # odd indices = black's moves
     examples = []
     for row in df_mate.dropna(subset=["moves"]).itertuples(index=False):
@@ -198,27 +197,25 @@ def build_examples(df_mate, seed=42):
         if not valid:
             continue
 
-        # Extract precomputed Stockfish predictions.
-        # Prefer positions that have a non-empty prediction so the engine is
-        # never needed at preprocessing time.
         sf_col = getattr(row, "stockfish_predictions", None)
         ply_preds = sf_col.split(";") if sf_col and isinstance(sf_col, str) and sf_col.strip() else []
         valid_with_sf = [m for m in valid if m < len(ply_preds) and ply_preds[m].strip()]
         if ply_preds and not valid_with_sf:
-            continue  # game has predictions but none reach a black-move position (annotations broke early)
-        chosen_from = valid_with_sf if valid_with_sf else valid
-        prompt_end = rng.choice(chosen_from)
-        precomputed_sf = ply_preds[prompt_end].strip() if prompt_end < len(ply_preds) else ""
+            continue  # predictions exist but all cut off before any black-move position
 
-        examples.append({
-            "game_id": getattr(row, "game_id", None),
-            "prompt": " ".join(tokens[:prompt_end]),
-            "label": tokens[prompt_end],
-            "turn_index": prompt_end,
-            "precomputed_sf": precomputed_sf,
-            "white_rating": getattr(row, "white_rating", 0),
-            "black_rating": getattr(row, "black_rating", 0),
-        })
+        # Use every valid black-move position as a separate training/eval example
+        positions = valid_with_sf if valid_with_sf else valid
+        for prompt_end in positions:
+            precomputed_sf = ply_preds[prompt_end].strip() if prompt_end < len(ply_preds) else ""
+            examples.append({
+                "game_id": getattr(row, "game_id", None),
+                "prompt": " ".join(tokens[:prompt_end]),
+                "label": tokens[prompt_end],
+                "turn_index": prompt_end,
+                "precomputed_sf": precomputed_sf,
+                "white_rating": getattr(row, "white_rating", 0),
+                "black_rating": getattr(row, "black_rating", 0),
+            })
     return examples
 
 
