@@ -332,14 +332,18 @@ def get_data_splits(data_path, seed=42):
 # ---------------------------------------------------------------------------
 
 def load_base_model(model_id, use_4bit=True):
-    bnb = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype="float16")
-    # Pin to one GPU — device_map="auto" splits layers across GPUs which
-    # conflicts with Trainer DataParallel and would duplicate the model
-    device_map = "auto" if use_4bit else None
+    # bnb_4bit_quant_storage=bfloat16 lets FSDP shard the 4-bit layers as float tensors
+    bnb = BitsAndBytesConfig(
+        load_in_4bit=True, bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_quant_storage=torch.bfloat16,
+    )
+    # No device_map — FSDP handles sharding across GPUs
     model = AutoModelForCausalLM.from_pretrained(
-        model_id, device_map=device_map,
+        model_id,
         quantization_config=bnb if use_4bit else None,
-        torch_dtype=None if use_4bit else torch.float16,
+        torch_dtype=torch.bfloat16,
     )
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     tokenizer.pad_token = tokenizer.eos_token
@@ -349,12 +353,16 @@ def load_base_model(model_id, use_4bit=True):
 def load_lora_checkpoint(checkpoint_path, use_4bit=True):
     from peft import PeftConfig
     base_model_id = PeftConfig.from_pretrained(checkpoint_path).base_model_name_or_path
-    bnb = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype="float16")
-    device_map = "auto" if use_4bit else None
+    bnb = BitsAndBytesConfig(
+        load_in_4bit=True, bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_quant_storage=torch.bfloat16,
+    )
     base = AutoModelForCausalLM.from_pretrained(
-        base_model_id, device_map=device_map,
+        base_model_id,
         quantization_config=bnb if use_4bit else None,
-        torch_dtype=None if use_4bit else torch.float16,
+        torch_dtype=torch.bfloat16,
     )
     model = PeftModel.from_pretrained(base, checkpoint_path)
     tokenizer = AutoTokenizer.from_pretrained(base_model_id)
@@ -523,6 +531,27 @@ def run_train(args):
         ),
     )
 
+    def preprocess_logits_for_metrics(logits, labels):
+        return logits.argmax(dim=-1), labels
+
+    def compute_metrics(eval_pred):
+        import numpy as np
+        from sklearn.metrics import f1_score
+        pred_ids, label_ids = eval_pred
+        all_preds, all_labels = [], []
+        for pred, label in zip(pred_ids, label_ids):
+            non_masked = np.where(np.array(label) != -100)[0]
+            if len(non_masked) == 0 or non_masked[0] == 0:
+                continue
+            pos = non_masked[0]
+            all_preds.append(int(pred[pos - 1]))   # logit at pos-1 predicts token at pos
+            all_labels.append(int(label[pos]))
+        if not all_labels:
+            return {"accuracy": 0.0, "f1": 0.0}
+        accuracy = sum(p == l for p, l in zip(all_preds, all_labels)) / len(all_labels)
+        f1 = f1_score(all_labels, all_preds, average="weighted", zero_division=0)
+        return {"accuracy": accuracy, "f1": f1}
+
     Path(args.train_output_dir).mkdir(parents=True, exist_ok=True)
     trainer = Trainer(
         model=model,
@@ -533,16 +562,18 @@ def run_train(args):
             num_train_epochs=args.epochs,
             fp16=True,
             eval_strategy="steps",
-            eval_steps=10,
-            save_steps=20,
+            eval_steps=500,
+            save_steps=500,
             save_total_limit=2,
-            logging_steps=5,
+            logging_steps=10,
             gradient_checkpointing=True,
             report_to="none",
             deepspeed=args.deepspeed_config if hasattr(args, "deepspeed_config") else None,
         ),
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
+        compute_metrics=compute_metrics,
+        preprocess_logits_for_metrics=preprocess_logits_for_metrics,
     )
     trainer.train(resume_from_checkpoint=args.resume_from_checkpoint or None)
     log.info("Training done. Outputs: %s", args.train_output_dir)

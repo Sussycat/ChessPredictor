@@ -90,6 +90,7 @@ def get_config_details(model_key, dataset_key, mode):
     max_eval_positions = CONFIG.get("max_eval_positions", None)
     engine_depth = CONFIG.get("engine_depth", None)
     deepspeed_config = smart_path(CONFIG.get("deepspeed_config", ""))
+    fsdp_config = smart_path(CONFIG.get("fsdp_config", ""))
     use_16bit = CONFIG.get("use_16bit", False)
 
     return {
@@ -107,6 +108,7 @@ def get_config_details(model_key, dataset_key, mode):
         "seed": CONFIG.get("seed", 42),
         "eval_k": CONFIG.get("eval_k", [1, 3, 5]),
         "deepspeed_config": deepspeed_config,
+        "fsdp_config": fsdp_config,
         "use_16bit": use_16bit,
     }
 
@@ -182,10 +184,17 @@ def main():
         safe_model = model_key.replace("/", "_").replace(" ", "")
         job_name = f"chess_{mode}_{dataset_key}_{safe_model}"
 
-        # Build command
-        use_deepspeed = cfg["use_16bit"] and cfg["num_gpus"] > 1 and mode in ("train", "both")
-        launcher = (["deepspeed", f"--num_gpus={cfg['num_gpus']}"]
-                    if use_deepspeed else ["python"])
+        # Build command — launcher depends on training strategy
+        is_train = mode in ("train", "both")
+        use_deepspeed = cfg["use_16bit"] and cfg["num_gpus"] > 1 and is_train
+        use_fsdp = not cfg["use_16bit"] and cfg["num_gpus"] > 1 and is_train and cfg["fsdp_config"]
+        if use_deepspeed:
+            launcher = ["deepspeed", f"--num_gpus={cfg['num_gpus']}"]
+        elif use_fsdp:
+            launcher = ["accelerate", "launch", "--config_file", cfg["fsdp_config"],
+                        f"--num_processes={cfg['num_gpus']}"]
+        else:
+            launcher = ["python"]
         cmd_list = launcher + [
             TARGET_SCRIPT,
             "--mode", mode,

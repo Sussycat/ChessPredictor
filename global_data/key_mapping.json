@@ -62,5 +62,6 @@
             ]
         }
     },
-    "deepspeed_config": "global_data/deepspeed_zero3.json"
+    "deepspeed_config": "global_data/deepspeed_zero3.json",
+    "fsdp_config": "global_data/fsdp_config.yaml"
 }
