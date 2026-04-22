@@ -179,6 +179,7 @@ def get_board_after_moves(moves_played):
             continue
         if move_str.startswith("P") and move_str not in {"O-O", "O-O-O"}:
             move_str = move_str[1:]
+        move_str = re.sub(r"[?!]", "", move_str)
         board.push_san(move_str)
     return board
 
@@ -196,17 +197,18 @@ def build_examples(df_mate, seed=42):
         valid = [m for m in black_moves if m < len(tokens)]
         if not valid:
             continue
-        prompt_end = rng.choice(valid)
 
-        # Extract precomputed Stockfish predictions for this position if available.
-        # stockfish_predictions is a ';'-separated string where entry[i] holds
-        # top-k predictions for the board state after i moves have been played.
-        precomputed_sf = ""
+        # Extract precomputed Stockfish predictions.
+        # Prefer positions that have a non-empty prediction so the engine is
+        # never needed at preprocessing time.
         sf_col = getattr(row, "stockfish_predictions", None)
-        if sf_col and isinstance(sf_col, str) and sf_col.strip():
-            ply_preds = sf_col.split(";")
-            if prompt_end < len(ply_preds):
-                precomputed_sf = ply_preds[prompt_end].strip()
+        ply_preds = sf_col.split(";") if sf_col and isinstance(sf_col, str) and sf_col.strip() else []
+        valid_with_sf = [m for m in valid if m < len(ply_preds) and ply_preds[m].strip()]
+        if ply_preds and not valid_with_sf:
+            continue  # game has predictions but none reach a black-move position (annotations broke early)
+        chosen_from = valid_with_sf if valid_with_sf else valid
+        prompt_end = rng.choice(chosen_from)
+        precomputed_sf = ply_preds[prompt_end].strip() if prompt_end < len(ply_preds) else ""
 
         examples.append({
             "game_id": getattr(row, "game_id", None),
@@ -232,10 +234,11 @@ def build_prompt(prompt_moves, engine=None, k=10, depth=1, precomputed_sf="", fo
             )
         sf_moves = get_stockfish_topk_moves(prompt_moves, engine, k=k, depth=depth)
         sf_with_p = add_p_to_pawn_moves_list(sf_moves)
+    clean_game = re.sub(r"[?!]", "", prompt_moves)
     prompt_text = (
         "Chess move prediction.\n"
         f"White Elo: {white_rating} | Black Elo: {black_rating}\n"
-        f"Game: {prompt_moves}\n"
+        f"Game: {clean_game}\n"
         f"Legal: {' '.join(sf_with_p)}\n"
         "Next move from legal list: "
     )

@@ -46,7 +46,8 @@ def get_game_evaluations(clean_moves, engine, k, depth):
         ply_predictions.append(" ".join(topk_formatted))
         
         try:
-            board.push_san(strip_pawn_prefix(move))
+            clean = re.sub(r"[?!]", "", strip_pawn_prefix(move))
+            board.push_san(clean)
         except Exception:
             break
             
