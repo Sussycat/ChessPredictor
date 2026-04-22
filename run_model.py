@@ -331,19 +331,25 @@ def get_data_splits(data_path, seed=42):
 # Model loading
 # ---------------------------------------------------------------------------
 
+def _local_rank():
+    return int(os.environ.get("LOCAL_RANK", 0))
+
+
 def load_base_model(model_id, use_4bit=True):
-    # bnb_4bit_quant_storage=bfloat16 lets FSDP shard the 4-bit layers as float tensors
+    # bnb_4bit_quant_storage=bfloat16 lets FSDP shard the 4-bit layers as bfloat16 tensors.
+    # device_map={"": local_rank} loads each rank's full copy to its own GPU so FSDP can shard correctly.
     bnb = BitsAndBytesConfig(
         load_in_4bit=True, bnb_4bit_quant_type="nf4",
         bnb_4bit_compute_dtype=torch.bfloat16,
         bnb_4bit_use_double_quant=True,
         bnb_4bit_quant_storage=torch.bfloat16,
     )
-    # No device_map — FSDP handles sharding across GPUs
+    local_rank = _local_rank()
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
         quantization_config=bnb if use_4bit else None,
         torch_dtype=torch.bfloat16,
+        device_map={"": local_rank},
     )
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     tokenizer.pad_token = tokenizer.eos_token
@@ -359,10 +365,12 @@ def load_lora_checkpoint(checkpoint_path, use_4bit=True):
         bnb_4bit_use_double_quant=True,
         bnb_4bit_quant_storage=torch.bfloat16,
     )
+    local_rank = _local_rank()
     base = AutoModelForCausalLM.from_pretrained(
         base_model_id,
         quantization_config=bnb if use_4bit else None,
         torch_dtype=torch.bfloat16,
+        device_map={"": local_rank},
     )
     model = PeftModel.from_pretrained(base, checkpoint_path)
     tokenizer = AutoTokenizer.from_pretrained(base_model_id)
