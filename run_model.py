@@ -338,8 +338,7 @@ def load_base_model(model_id, use_4bit=True):
     bnb = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype="float16")
     # Pin to one GPU — device_map="auto" splits layers across GPUs which
     # conflicts with Trainer DataParallel and would duplicate the model
-    # 16-bit: no device_map — DeepSpeed ZeRO-3 handles GPU placement
-    device_map = {"":  0} if use_4bit else None
+    device_map = "auto" if use_4bit else None
     model = AutoModelForCausalLM.from_pretrained(
         model_id, device_map=device_map,
         quantization_config=bnb if use_4bit else None,
@@ -354,7 +353,7 @@ def load_lora_checkpoint(checkpoint_path, use_4bit=True):
     from peft import PeftConfig
     base_model_id = PeftConfig.from_pretrained(checkpoint_path).base_model_name_or_path
     bnb = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype="float16")
-    device_map = {"":  0} if use_4bit else None
+    device_map = "auto" if use_4bit else None
     base = AutoModelForCausalLM.from_pretrained(
         base_model_id, device_map=device_map,
         quantization_config=bnb if use_4bit else None,
@@ -541,6 +540,7 @@ def run_train(args):
             save_steps=20,
             save_total_limit=2,
             logging_steps=5,
+            gradient_checkpointing=True,
             report_to="none",
             deepspeed=args.deepspeed_config if hasattr(args, "deepspeed_config") else None,
         ),
@@ -658,6 +658,7 @@ def parse_args():
 
 def main():
     args = parse_args()
+
     if args.max_eval_positions == 0:
         args.max_eval_positions = None
 
