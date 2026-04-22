@@ -1,5 +1,9 @@
 {
-    "eval_k": [1,3,5],
+    "eval_k": [
+        1,
+        3,
+        5
+    ],
     "max_eval_positions": 0,
     "max_output_length": 1024,
     "batch_size": 8,
@@ -9,34 +13,58 @@
     "stockfish_path": "/scratch/user/nguye3hv/stockfish/stockfish-ubuntu-x86-64-avx2",
     "engine_depth": 10,
     "model_dir": "/scratch/user/nguye3hv/models/",
-    "mode": ["train", "test", "both"],
-    "model_alts":{
+    "mode": [
+        "train",
+        "test",
+        "both"
+    ],
+    "model_alts": {
         "Llama-3.2-11B": "Llama-3.2-11B-Vision-Instruct",
         "Llama-3.2-90B": "Llama-3.2-90B-Vision-Instruct",
         "Zephyr-7B": "zephyr-7b-alpha",
-        "Mixtral-8x7B":"Mixtral-8x7B-Instruct-v0.1",
+        "Mixtral-8x7B": "Mixtral-8x7B-Instruct-v0.1",
         "Qwen3.5-9B": "Qwen3.5-9B"
     },
-    "gpu_mappings":{
-        "default":{
-            "default": [0],
-            "Llama-3.2-90B": [0,1],
-            "Mixtral-8x7B": [0,1],
-            "Qwen3.5-9B": [0,1]
+    "gpu_mappings": {
+        "default": {
+            "default": [
+                0
+            ],
+            "Llama-3.2-90B": [
+                0,
+                1
+            ],
+            "Mixtral-8x7B": [
+                0,
+                1
+            ],
+            "Qwen3.5-9B": [
+                0,
+                1
+            ]
         }
     },
     "input_dir": "/scratch/user/nguye3hv/data/",
     "train_output_dir": "/scratch/user/nguye3hv/checkpoints/",
     "eval_output_dir": "results/",
-    "dataset_alts":{
+    "dataset_alts": {
         "all_d1": "all_d1"
     },
-    "task_mapping":{
-        "dataset":{
-            "Chess": ["all_d1"]
+    "task_mapping": {
+        "dataset": {
+            "Chess": [
+                "all_d1"
+            ]
         },
-        "model":{
-            "Chess": ["Llama-3.2-11B", "Llama-3.2-90B", "Zephyr-7B", "Mixtral-8x7B", "Qwen3.5-9B"]
+        "model": {
+            "Chess": [
+                "Llama-3.2-11B",
+                "Llama-3.2-90B",
+                "Zephyr-7B",
+                "Mixtral-8x7B",
+                "Qwen3.5-9B"
+            ]
         }
-    }
+    },
+    "deepspeed_config": "global_data/deepspeed_zero3.json"
 }

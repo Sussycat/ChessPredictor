@@ -89,6 +89,8 @@ def get_config_details(model_key, dataset_key, mode):
     stockfish_path = smart_path(CONFIG.get("stockfish_path", ""))
     max_eval_positions = CONFIG.get("max_eval_positions", None)
     engine_depth = CONFIG.get("engine_depth", None)
+    deepspeed_config = smart_path(CONFIG.get("deepspeed_config", ""))
+    use_16bit = CONFIG.get("use_16bit", False)
 
     return {
         "model_path": model_path,
@@ -104,6 +106,8 @@ def get_config_details(model_key, dataset_key, mode):
         "batch_size": CONFIG.get("batch_size", 8),
         "seed": CONFIG.get("seed", 42),
         "eval_k": CONFIG.get("eval_k", [1, 3, 5]),
+        "deepspeed_config": deepspeed_config,
+        "use_16bit": use_16bit,
     }
 
 
@@ -179,8 +183,11 @@ def main():
         job_name = f"chess_{mode}_{dataset_key}_{safe_model}"
 
         # Build command
-        cmd_list = [
-            "python", TARGET_SCRIPT,
+        use_deepspeed = cfg["use_16bit"] and cfg["num_gpus"] > 1 and mode in ("train", "both")
+        launcher = (["deepspeed", f"--num_gpus={cfg['num_gpus']}"]
+                    if use_deepspeed else ["python"])
+        cmd_list = launcher + [
+            TARGET_SCRIPT,
             "--mode", mode,
             "--data_path",  cfg["dataset_path"],
             "--train_output_dir", cfg["checkpoint_path"],
@@ -191,6 +198,10 @@ def main():
             "--eval_k",
         ] + [str(k) for k in cfg["eval_k"]]
 
+        if cfg["use_16bit"]:
+            cmd_list += ["--use_16bit"]
+            if cfg["deepspeed_config"] and use_deepspeed:
+                cmd_list += ["--deepspeed_config", cfg["deepspeed_config"]]
         if mode in ("test", "both"):
             cmd_list += ["--eval_output_dir", cfg["eval_output_path"]]
         if cfg["stockfish_path"]:

@@ -336,8 +336,12 @@ def get_data_splits(data_path, seed=42):
 
 def load_base_model(model_id, use_4bit=True):
     bnb = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype="float16")
+    # Pin to one GPU — device_map="auto" splits layers across GPUs which
+    # conflicts with Trainer DataParallel and would duplicate the model
+    # 16-bit: no device_map — DeepSpeed ZeRO-3 handles GPU placement
+    device_map = {"":  0} if use_4bit else None
     model = AutoModelForCausalLM.from_pretrained(
-        model_id, device_map="auto",
+        model_id, device_map=device_map,
         quantization_config=bnb if use_4bit else None,
         torch_dtype=None if use_4bit else torch.float16,
     )
@@ -350,8 +354,9 @@ def load_lora_checkpoint(checkpoint_path, use_4bit=True):
     from peft import PeftConfig
     base_model_id = PeftConfig.from_pretrained(checkpoint_path).base_model_name_or_path
     bnb = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype="float16")
+    device_map = {"":  0} if use_4bit else None
     base = AutoModelForCausalLM.from_pretrained(
-        base_model_id, device_map="auto",
+        base_model_id, device_map=device_map,
         quantization_config=bnb if use_4bit else None,
         torch_dtype=None if use_4bit else torch.float16,
     )
@@ -537,6 +542,7 @@ def run_train(args):
             save_total_limit=2,
             logging_steps=5,
             report_to="none",
+            deepspeed=args.deepspeed_config if hasattr(args, "deepspeed_config") else None,
         ),
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
@@ -635,6 +641,8 @@ def parse_args():
     # Quantization
     p.add_argument("--use_16bit", action="store_true",
                    help="Load model in 16-bit (float16). Default is 4-bit NF4 (QLoRA).")
+    p.add_argument("--deepspeed_config", default=None,
+                   help="Path to DeepSpeed ZeRO-3 config JSON for 16-bit multi-GPU training.")
 
     # Stockfish override
     p.add_argument("--force_stockfish", action="store_true",

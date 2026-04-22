@@ -1,6 +1,6 @@
-huggingface_hub 
+huggingface_hub
 datasets
-panda
+pandas
 chess
 tqdm
 scikit-learn
@@ -8,3 +8,7 @@ torch
 peft
 transformers
 bitsandbytes>=0.46.1
+accelerate
+deepspeed
+causal-conv1d
+flash-linear-attention
