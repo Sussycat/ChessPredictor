@@ -6,7 +6,7 @@
     ],
     "max_eval_positions": 0,
     "max_output_length": 1024,
-    "batch_size": 16,
+    "batch_size": 24,
     "model_max_length": 4096,
     "epochs": 1,
     "seed": 42,
