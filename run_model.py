@@ -577,9 +577,9 @@ def run_train(args):
             num_train_epochs=args.epochs,
             bf16=True,
             eval_strategy="steps",
-            eval_steps=0.1,
+            eval_steps=args.eval_steps,
             save_strategy="steps",
-            save_steps=0.1,
+            save_steps=args.eval_steps,
             save_total_limit=2,
             load_best_model_at_end=True,
             metric_for_best_model="f1",
@@ -686,6 +686,8 @@ def parse_args():
     p.add_argument("--engine_depth", type=int, default=10,
                    help="Stockfish search depth used during evaluation.")
 
+    p.add_argument("--eval_steps", type=float, default=0.1,
+                   help="Eval/save frequency: fraction of epoch (0.0–1.0) or integer steps.")
     # Quantization
     p.add_argument("--use_16bit", action="store_true",
                    help="Load model in 16-bit (float16). Default is 4-bit NF4 (QLoRA).")

@@ -92,6 +92,7 @@ def get_config_details(model_key, dataset_key, mode):
     deepspeed_config = smart_path(CONFIG.get("deepspeed_config", ""))
     fsdp_config = smart_path(CONFIG.get("fsdp_config", ""))
     use_16bit = CONFIG.get("use_16bit", False)
+    eval_steps = CONFIG.get("eval_steps", 0.1)
 
     return {
         "model_path": model_path,
@@ -110,6 +111,7 @@ def get_config_details(model_key, dataset_key, mode):
         "deepspeed_config": deepspeed_config,
         "fsdp_config": fsdp_config,
         "use_16bit": use_16bit,
+        "eval_steps": eval_steps,
     }
 
 
@@ -221,6 +223,7 @@ def main():
             cmd_list += ["--max_eval_positions", str(cfg["max_eval_positions"])]
         if cfg["engine_depth"] is not None:
             cmd_list += ["--engine_depth", str(cfg["engine_depth"])]
+        cmd_list += ["--eval_steps", str(cfg["eval_steps"])]
 
         cmd_str = " ".join(str(c) for c in cmd_list)
         log_filename = os.path.join(log_dir, f"{job_name}_%j.txt")
