@@ -334,7 +334,7 @@ def get_data_splits(data_path, seed=42):
 # Model loading
 # ---------------------------------------------------------------------------
 
-def load_base_model(model_id, use_4bit=False):
+def load_base_model(model_id, use_4bit=True):
     bnb = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype="float16")
     model = AutoModelForCausalLM.from_pretrained(
         model_id, device_map="auto",
@@ -346,7 +346,7 @@ def load_base_model(model_id, use_4bit=False):
     return model, tokenizer
 
 
-def load_lora_checkpoint(checkpoint_path, use_4bit=False):
+def load_lora_checkpoint(checkpoint_path, use_4bit=True):
     from peft import PeftConfig
     base_model_id = PeftConfig.from_pretrained(checkpoint_path).base_model_name_or_path
     bnb = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype="float16")
@@ -476,7 +476,7 @@ def run_train(args):
     log.info("Loading dataset: %s", args.data_path)
     train_ex_df, eval_ex_df, test_ex_df = get_data_splits(args.data_path, seed=args.seed)
 
-    model, tokenizer = load_base_model(args.model_path, use_4bit=args.use_4bit)
+    model, tokenizer = load_base_model(args.model_path, use_4bit=not args.use_16bit)
 
     # Use precomputed Stockfish predictions from the dataset when available.
     # The engine is still needed for eval baseline; for preprocessing it is
@@ -551,7 +551,7 @@ def run_test(args, model=None, tokenizer=None, eval_examples_df=None, sf_path=No
         if not args.model_path:
             raise ValueError("--model_path is required for test mode.")
         log.info("Loading checkpoint: %s", args.model_path)
-        model, tokenizer = load_lora_checkpoint(args.model_path, use_4bit=args.use_4bit)
+        model, tokenizer = load_lora_checkpoint(args.model_path, use_4bit=not args.use_16bit)
 
     if sf_path is None:
         sf_path = args.stockfish_path or detect_stockfish_path()
@@ -633,8 +633,8 @@ def parse_args():
                    help="Stockfish search depth used during evaluation.")
 
     # Quantization
-    p.add_argument("--use_4bit", action="store_true",
-                   help="Load model in 4-bit NF4 (QLoRA). Default is 16-bit (float16).")
+    p.add_argument("--use_16bit", action="store_true",
+                   help="Load model in 16-bit (float16). Default is 4-bit NF4 (QLoRA).")
 
     # Stockfish override
     p.add_argument("--force_stockfish", action="store_true",
