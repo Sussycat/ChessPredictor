@@ -554,13 +554,16 @@ def run_train(args):
         if pred_ids.ndim == 3:
             pred_ids = pred_ids.argmax(axis=-1)
         all_preds, all_labels = [], []
+        skipped = 0
         for pred, label in zip(pred_ids, label_ids):
             non_masked = np.where(label != -100)[0]
             if len(non_masked) == 0 or non_masked[0] == 0:
+                skipped += 1
                 continue
             pos = int(non_masked[0])
             all_preds.append(int(pred[pos - 1]))
             all_labels.append(int(label[pos]))
+        log.info("compute_metrics: used=%d skipped=%d", len(all_labels), skipped)
         if not all_labels:
             return {"accuracy": 0.0, "f1": 0.0}
         accuracy = sum(p == l for p, l in zip(all_preds, all_labels)) / len(all_labels)
