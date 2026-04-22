@@ -68,5 +68,5 @@
     },
     "deepspeed_config": "global_data/deepspeed_zero3.json",
     "fsdp_config": "global_data/fsdp_config.json",
-    "eval_steps": 1
+    "eval_steps": 0.1
 }
