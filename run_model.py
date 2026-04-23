@@ -382,15 +382,13 @@ def load_lora_checkpoint(checkpoint_path, use_4bit=True):
 # Evaluation
 # ---------------------------------------------------------------------------
 
-def generate_model_topk(prompt_moves, model, tokenizer, engine=None, k=5, max_new_tokens=8,
-                        precomputed_sf="", force_stockfish=False, white_rating=0, black_rating=0):
-    prompt_text, sf_moves = build_prompt(
-        prompt_moves, engine,
-        precomputed_sf=precomputed_sf, force_stockfish=force_stockfish,
+def generate_model_topk(prompt_moves, model, tokenizer, k=5, max_new_tokens=8,
+                        precomputed_sf="", white_rating=0, black_rating=0):
+    prompt_text, _ = build_prompt(
+        prompt_moves, engine=None,
+        precomputed_sf=precomputed_sf, force_stockfish=False,
         white_rating=white_rating, black_rating=black_rating,
     )
-    legal_labels = unique_in_order([normalize_label(m) for m in sf_moves])
-
     device = next(model.parameters()).device
     inputs = tokenizer(prompt_text, return_tensors="pt").to(device)
     with torch.inference_mode():
@@ -409,67 +407,47 @@ def generate_model_topk(prompt_moves, model, tokenizer, engine=None, k=5, max_ne
     for output in outputs:
         text = tokenizer.decode(output[prompt_len:], skip_special_tokens=True).strip()
         norm = normalize_label(text)
-        if norm in legal_labels and norm not in preds:
+        if norm and norm not in preds:
             preds.append(norm)
     return preds
 
 
-def get_stockfish_topk_labels(moves_played, engine, k=5, depth=10):
-    board = get_board_after_moves(moves_played)
-    analysis = engine.analyse(board, chess.engine.Limit(depth=depth), multipv=max(1, k))
-    if isinstance(analysis, dict):
-        analysis = [analysis]
-    preds = []
-    for info in sorted(analysis, key=lambda x: x.get("multipv", 1)):
-        pv = info.get("pv", [])
-        if pv:
-            preds.append(normalize_label(board.san(pv[0])))
-    return unique_in_order(preds)
-
-
-def evaluate_cache_baseline(eval_examples_df, model, tokenizer, stockfish_path,
-                             k_values=(1, 3, 5), max_positions=50, engine_depth=10,
-                             force_stockfish=False):
+def evaluate_llm(eval_examples_df, model, tokenizer,
+                 k_values=(1, 3, 5), max_positions=None):
     ordered_k = tuple(sorted(set(k_values)))
     max_k = max(ordered_k)
     subset = eval_examples_df.reset_index(drop=True)
-    if max_positions is not None:
+    if max_positions:
         subset = subset.head(max_positions)
 
     rows = []
-    with chess.engine.SimpleEngine.popen_uci(stockfish_path) as engine:
-        for i, (_, row) in enumerate(subset.iterrows()):
-            actual = normalize_label(row["label"])
-            precomputed_sf = row.get("precomputed_sf", "") if hasattr(row, "get") else ""
+    for i, (_, row) in enumerate(subset.iterrows()):
+        actual = normalize_label(row["label"])
+        precomputed_sf = row.get("precomputed_sf", "") if hasattr(row, "get") else ""
 
-            t0 = time.time()
-            llm_preds = generate_model_topk(
-                row["prompt"], model, tokenizer, engine, k=max_k,
-                precomputed_sf=precomputed_sf, force_stockfish=force_stockfish,
-                white_rating=row.get("white_rating", 0),
-                black_rating=row.get("black_rating", 0),
-            )
-            llm_ms = (time.time() - t0) * 1000
+        t0 = time.time()
+        llm_preds = generate_model_topk(
+            row["prompt"], model, tokenizer, k=max_k,
+            precomputed_sf=precomputed_sf,
+            white_rating=row.get("white_rating", 0),
+            black_rating=row.get("black_rating", 0),
+        )
+        llm_ms = (time.time() - t0) * 1000
 
-            t0 = time.time()
-            sf_preds = get_stockfish_topk_labels(row["prompt"], engine, k=max_k, depth=engine_depth)
-            sf_ms = (time.time() - t0) * 1000
+        rec = {
+            "game_id": row.get("game_id"),
+            "prompt": row["prompt"],
+            "actual_label": actual,
+            "precomputed_sf": precomputed_sf,
+            "llm_inference_ms": llm_ms,
+        }
+        for k in ordered_k:
+            rec[f"llm_hit@{k}"] = actual in llm_preds[:k]
+            rec[f"llm_top_{k}"] = ", ".join(llm_preds[:k])
+        rows.append(rec)
 
-            rec = {
-                "game_id": row.get("game_id"),
-                "actual_label": actual,
-                "llm_inference_ms": llm_ms,
-                "stockfish_inference_ms": sf_ms,
-            }
-            for k in ordered_k:
-                rec[f"llm_hit@{k}"] = actual in llm_preds[:k]
-                rec[f"stockfish_hit@{k}"] = actual in sf_preds[:k]
-                rec[f"llm_top_{k}"] = ", ".join(llm_preds[:k])
-                rec[f"stockfish_top_{k}"] = ", ".join(sf_preds[:k])
-            rows.append(rec)
-
-            if (i + 1) % 10 == 0:
-                log.info("  %d/%d positions evaluated", i + 1, len(subset))
+        if (i + 1) % 10 == 0:
+            log.info("  %d/%d positions evaluated", i + 1, len(subset))
 
     detail_df = pd.DataFrame(rows)
     summary_rows = []
@@ -477,10 +455,8 @@ def evaluate_cache_baseline(eval_examples_df, model, tokenizer, stockfish_path,
         summary_rows.append({
             "k": k,
             "positions": len(detail_df),
-            "llm_hit_rate": detail_df[f"llm_hit@{k}"].mean(),
-            "stockfish_hit_rate": detail_df[f"stockfish_hit@{k}"].mean(),
+            "llm_pass@k": detail_df[f"llm_hit@{k}"].mean(),
             "llm_avg_ms": detail_df["llm_inference_ms"].mean(),
-            "stockfish_avg_ms": detail_df["stockfish_inference_ms"].mean(),
         })
     return detail_df, pd.DataFrame(summary_rows)
 
@@ -604,16 +580,14 @@ def run_train(args):
 
 
 def run_test(args, model=None, tokenizer=None, eval_examples_df=None, sf_path=None):
+    if _local_rank() != 0:
+        return
+
     if model is None:
         if not args.model_path:
             raise ValueError("--model_path is required for test mode.")
         log.info("Loading checkpoint: %s", args.model_path)
         model, tokenizer = load_lora_checkpoint(args.model_path, use_4bit=not args.use_16bit)
-
-    if sf_path is None:
-        sf_path = args.stockfish_path or detect_stockfish_path()
-    if sf_path is None:
-        raise RuntimeError("Stockfish not found. Install it or pass --stockfish_path (required for eval baseline).")
 
     if eval_examples_df is None:
         log.info("Rebuilding test set from %s", args.data_path)
@@ -621,20 +595,17 @@ def run_test(args, model=None, tokenizer=None, eval_examples_df=None, sf_path=No
         eval_examples_df = eval_examples_df.reset_index(drop=True)
 
     n_eval = min(args.max_eval_positions, len(eval_examples_df)) if args.max_eval_positions else len(eval_examples_df)
-    log.info("Evaluating %d positions (engine depth=%d)...", n_eval, args.engine_depth)
+    log.info("Evaluating %d positions...", n_eval)
 
-    detail_df, summary_df = evaluate_cache_baseline(
+    detail_df, summary_df = evaluate_llm(
         eval_examples_df=eval_examples_df,
         model=model,
         tokenizer=tokenizer,
-        stockfish_path=sf_path,
         k_values=tuple(args.eval_k),
         max_positions=args.max_eval_positions or None,
-        engine_depth=args.engine_depth,
-        force_stockfish=args.force_stockfish,
     )
 
-    log.info("\n%s\nCACHE BASELINE SUMMARY\n%s\n%s",
+    log.info("\n%s\nLLM PASS@K SUMMARY\n%s\n%s",
              "=" * 60, summary_df.round(4).to_string(index=False), "=" * 60)
 
     eval_out = args.eval_output_dir or args.train_output_dir
