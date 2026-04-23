@@ -20,6 +20,7 @@ except FileNotFoundError:
     sys.exit(1)
 
 TARGET_SCRIPT = os.path.join(main_dir, "run_model.py")
+COMPARE_SCRIPT = os.path.join(main_dir, "compare_results.py")
 
 SLURM_TEMPLATE = """#!/bin/bash
 
@@ -36,7 +37,7 @@ SLURM_TEMPLATE = """#!/bin/bash
 # --- SETUP ENVIRONMENT ---
 module load CUDA/11.8.0
 source /sw/eb/sw/Miniconda3/23.10.0-1/bin/activate {conda_env}
-
+{extra_env}
 cd {work_dir}
 
 # --- RUN SCRIPT ---
@@ -137,8 +138,8 @@ def main():
     parser.add_argument("-a", "--action", choices=["generate", "run"], default="generate")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
-        "--mode", choices=["train", "test", "both"], default=None,
-        help="Override mode from key_mapping.json (train/test/both).",
+        "--mode", choices=["train", "test", "both", "stockfish"], default=None,
+        help="Override mode from key_mapping.json (train/test/both/stockfish).",
     )
     parser.add_argument("-d", "--dataset", nargs="+", help="Dataset keys to include (default: all).")
     parser.add_argument("-m", "--model", nargs="+", help="Model keys to include (default: all).")
@@ -185,58 +186,78 @@ def main():
         cfg = get_config_details(model_key, dataset_key, mode)
         safe_model = model_key.replace("/", "_").replace(" ", "")
         job_name = f"chess_{mode}_{dataset_key}_{safe_model}"
-
-        # Build command — launcher depends on training strategy
-        is_train = mode in ("train", "both")
-        use_deepspeed = cfg["use_16bit"] and cfg["num_gpus"] > 1 and is_train
-        use_fsdp = not cfg["use_16bit"] and cfg["num_gpus"] > 1 and is_train and cfg["fsdp_config"]
-        if use_deepspeed:
-            launcher = ["deepspeed", f"--num_gpus={cfg['num_gpus']}"]
-        elif use_fsdp:
-            launcher = ["accelerate", "launch", "--config_file", cfg["fsdp_config"],
-                        f"--num_processes={cfg['num_gpus']}"]
-        else:
-            launcher = ["python"]
-        cmd_list = launcher + [
-            TARGET_SCRIPT,
-            "--mode", mode,
-            "--data_path",  cfg["dataset_path"],
-            "--train_output_dir", cfg["checkpoint_path"],
-            "--model_path", cfg["model_path"],
-            "--epochs",     str(cfg["epochs"]),
-            "--batch_size", str(cfg["batch_size"]),
-            "--seed",       str(cfg["seed"]),
-            "--eval_k",
-        ] + [str(k) for k in cfg["eval_k"]]
-
-        if cfg["use_16bit"]:
-            cmd_list += ["--use_16bit"]
-            if cfg["deepspeed_config"] and use_deepspeed:
-                cmd_list += ["--deepspeed_config", cfg["deepspeed_config"]]
-        if mode in ("test", "both"):
-            cmd_list += ["--eval_output_dir", cfg["eval_output_path"]]
-        if cfg["stockfish_path"]:
-            cmd_list += ["--stockfish_path", cfg["stockfish_path"]]
-        if args.hf_token:
-            cmd_list += ["--hf_token", args.hf_token]
-        if cfg["max_eval_positions"] is not None:
-            cmd_list += ["--max_eval_positions", str(cfg["max_eval_positions"])]
-        if cfg["engine_depth"] is not None:
-            cmd_list += ["--engine_depth", str(cfg["engine_depth"])]
-        cmd_list += ["--eval_steps", str(cfg["eval_steps"])]
-
-        cmd_str = " ".join(str(c) for c in cmd_list)
         log_filename = os.path.join(log_dir, f"{job_name}_%j.txt")
+
+        if mode == "stockfish":
+            eval_csv = os.path.join(cfg["eval_output_path"], "eval_detail.csv")
+            cmd_list = [
+                "python", COMPARE_SCRIPT,
+                "--eval_csv", eval_csv,
+                "--output_dir", cfg["eval_output_path"],
+                "--k",
+            ] + [str(k) for k in cfg["eval_k"]]
+            if cfg["stockfish_path"]:
+                cmd_list += ["--stockfish_path", cfg["stockfish_path"]]
+            if cfg["engine_depth"] is not None:
+                cmd_list += ["--depth", str(cfg["engine_depth"])]
+            if cfg["max_eval_positions"]:
+                cmd_list += ["--max_positions", str(cfg["max_eval_positions"])]
+            cmd_str = " ".join(str(c) for c in cmd_list)
+            extra_env = "export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH"
+            num_gpus = 1
+        else:
+            # Build command — launcher depends on training strategy
+            is_train = mode in ("train", "both")
+            use_deepspeed = cfg["use_16bit"] and cfg["num_gpus"] > 1 and is_train
+            use_fsdp = not cfg["use_16bit"] and cfg["num_gpus"] > 1 and is_train and cfg["fsdp_config"]
+            if use_deepspeed:
+                launcher = ["deepspeed", f"--num_gpus={cfg['num_gpus']}"]
+            elif use_fsdp:
+                launcher = ["accelerate", "launch", "--config_file", cfg["fsdp_config"],
+                            f"--num_processes={cfg['num_gpus']}"]
+            else:
+                launcher = ["python"]
+            cmd_list = launcher + [
+                TARGET_SCRIPT,
+                "--mode", mode,
+                "--data_path",  cfg["dataset_path"],
+                "--train_output_dir", cfg["checkpoint_path"],
+                "--model_path", cfg["model_path"],
+                "--epochs",     str(cfg["epochs"]),
+                "--batch_size", str(cfg["batch_size"]),
+                "--seed",       str(cfg["seed"]),
+                "--eval_k",
+            ] + [str(k) for k in cfg["eval_k"]]
+
+            if cfg["use_16bit"]:
+                cmd_list += ["--use_16bit"]
+                if cfg["deepspeed_config"] and use_deepspeed:
+                    cmd_list += ["--deepspeed_config", cfg["deepspeed_config"]]
+            if mode in ("test", "both"):
+                cmd_list += ["--eval_output_dir", cfg["eval_output_path"]]
+            if cfg["stockfish_path"]:
+                cmd_list += ["--stockfish_path", cfg["stockfish_path"]]
+            if args.hf_token:
+                cmd_list += ["--hf_token", args.hf_token]
+            if cfg["max_eval_positions"] is not None:
+                cmd_list += ["--max_eval_positions", str(cfg["max_eval_positions"])]
+            if cfg["engine_depth"] is not None:
+                cmd_list += ["--engine_depth", str(cfg["engine_depth"])]
+            cmd_list += ["--eval_steps", str(cfg["eval_steps"])]
+            cmd_str = " ".join(str(c) for c in cmd_list)
+            extra_env = ""
+            num_gpus = cfg["num_gpus"]
 
         if args.action == "generate":
             slurm_filename = os.path.join(slurm_dir, f"{job_name}.sh")
             script_content = SLURM_TEMPLATE.format(
-                num_gpus=cfg["num_gpus"],
+                num_gpus=num_gpus,
                 job_name=job_name,
                 log_path=log_filename,
                 work_dir=main_dir,
                 cmd_str=cmd_str,
                 conda_env=args.conda_env,
+                extra_env=extra_env,
             )
             if args.dry_run:
                 print(f"\n[DRY] Preview: {slurm_filename}")
@@ -252,7 +273,8 @@ def main():
             else:
                 print(f"[RUN] {job_name}")
                 my_env = os.environ.copy()
-                my_env["CUDA_VISIBLE_DEVICES"] = cfg["gpu_comma_str"]
+                if mode != "stockfish":
+                    my_env["CUDA_VISIBLE_DEVICES"] = cfg["gpu_comma_str"]
                 try:
                     subprocess.run(cmd_list, env=my_env, check=True)
                 except subprocess.CalledProcessError as e:

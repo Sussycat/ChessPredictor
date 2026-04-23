@@ -335,6 +335,55 @@ def _local_rank():
     return int(os.environ.get("LOCAL_RANK", 0))
 
 
+def save_peft_from_fsdp(fsdp_checkpoint_dir, base_model_path, output_dir):
+    """Merge FSDP shards and save LoRA adapter in PEFT format (rank 0 only)."""
+    import re
+    import json
+    from torch.distributed.checkpoint.format_utils import dcp_to_torch_save
+    from safetensors.torch import save_file
+
+    fsdp_dir = os.path.join(fsdp_checkpoint_dir, "pytorch_model_fsdp_0")
+    if not os.path.isdir(fsdp_dir):
+        log.warning("FSDP shard dir not found, skipping PEFT save: %s", fsdp_dir)
+        return
+
+    merged_path = os.path.join(output_dir, "_merged_tmp.pt")
+    log.info("Merging FSDP shards from %s ...", fsdp_dir)
+    dcp_to_torch_save(fsdp_dir, merged_path)
+    state_dict = torch.load(merged_path, map_location="cpu", weights_only=False)
+    os.remove(merged_path)
+
+    adapter_state = {}
+    for key, tensor in state_dict.items():
+        if "lora_" not in key:
+            continue
+        clean = re.sub(r"^_fsdp_wrapped_module\.", "", key)
+        clean = clean.replace("._fsdp_wrapped_module.", ".")
+        adapter_state[clean] = tensor.contiguous()
+
+    if not adapter_state:
+        log.warning("No LoRA keys found in FSDP checkpoint — adapter not saved.")
+        return
+
+    save_file(adapter_state, os.path.join(output_dir, "adapter_model.safetensors"))
+
+    adapter_config = {
+        "peft_type": "LORA",
+        "task_type": "CAUSAL_LM",
+        "base_model_name_or_path": base_model_path,
+        "r": 8,
+        "lora_alpha": 16,
+        "lora_dropout": 0.05,
+        "target_modules": ["q_proj", "k_proj", "v_proj", "o_proj",
+                           "gate_proj", "up_proj", "down_proj"],
+        "bias": "none",
+    }
+    with open(os.path.join(output_dir, "adapter_config.json"), "w") as f:
+        json.dump(adapter_config, f, indent=2)
+
+    log.info("PEFT adapter saved to %s", output_dir)
+
+
 def load_base_model(model_id, use_4bit=True):
     # bnb_4bit_quant_storage=bfloat16 lets FSDP shard the 4-bit layers as bfloat16 tensors.
     # device_map={"": local_rank} loads each rank's full copy to its own GPU so FSDP can shard correctly.
@@ -576,6 +625,12 @@ def run_train(args):
     )
     trainer.train(resume_from_checkpoint=args.resume_from_checkpoint or None)
     log.info("Training done. Outputs: %s", args.train_output_dir)
+
+    if _local_rank() == 0:
+        best_ckpt = trainer.state.best_model_checkpoint or args.train_output_dir
+        peft_out = os.path.join(args.train_output_dir, "final_model")
+        save_peft_from_fsdp(best_ckpt, args.model_path, peft_out)
+
     return model, tokenizer, test_ex_df, sf_path
 
 

@@ -22,6 +22,11 @@ import sys
 import time
 import logging
 
+# Expose conda's libstdc++ so Stockfish binaries compiled with newer GCC work on older nodes
+_conda_lib = os.path.join(os.environ.get("CONDA_PREFIX", ""), "lib")
+if _conda_lib and os.path.isdir(_conda_lib):
+    os.environ["LD_LIBRARY_PATH"] = _conda_lib + ":" + os.environ.get("LD_LIBRARY_PATH", "")
+
 import chess
 import chess.engine
 import pandas as pd
