@@ -17,10 +17,12 @@ import argparse
 import json
 import os
 import re
+import threading
 
 import torch
 from torch.distributed.checkpoint.format_utils import dcp_to_torch_save
 from safetensors.torch import save_file
+from tqdm import tqdm
 
 
 LORA_CONFIG = {
@@ -55,25 +57,30 @@ def main():
 
     # Step 1: merge FSDP shards into a single state dict file
     merged_path = os.path.join(out_dir, "_merged_state_dict.pt")
-    print(f"Merging FSDP shards from {fsdp_dir} ...")
+    done = threading.Event()
+
+    def _spinner():
+        with tqdm(desc="Merging FSDP shards", bar_format="{desc} {elapsed}", leave=False) as pbar:
+            while not done.wait(0.5):
+                pbar.update()
+
+    t = threading.Thread(target=_spinner, daemon=True)
+    t.start()
     dcp_to_torch_save(fsdp_dir, merged_path)
+    done.set()
+    t.join()
+
     state_dict = torch.load(merged_path, map_location="cpu", weights_only=False)
     os.remove(merged_path)
     print(f"Merged {len(state_dict)} keys.")
 
     # Step 2: extract LoRA adapter weights
-    # FSDP wraps the model so keys look like:
-    #   _fsdp_wrapped_module.base_model.model.model.layers.0.self_attn.q_proj.lora_A.default.weight
-    # PEFT expects:
-    #   base_model.model.model.layers.0.self_attn.q_proj.lora_A.default.weight
-    lora_keys = {k for k in state_dict if "lora_" in k}
+    lora_keys = sorted(k for k in state_dict if "lora_" in k)
     print(f"Found {len(lora_keys)} LoRA parameter tensors.")
 
     adapter_state = {}
-    for key in sorted(lora_keys):
-        # Strip the FSDP wrapper prefix
+    for key in tqdm(lora_keys, desc="Extracting LoRA weights"):
         clean = re.sub(r"^_fsdp_wrapped_module\.", "", key)
-        # Also strip any inner _fsdp_wrapped_module occurrences
         clean = clean.replace("._fsdp_wrapped_module.", ".")
         adapter_state[clean] = state_dict[key].contiguous()
 
