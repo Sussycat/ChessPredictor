@@ -16,8 +16,15 @@ Usage (run on the cluster, single GPU is fine):
 import argparse
 import json
 import os
+import pathlib
+import platform
 import re
 import threading
+
+# Checkpoints saved on Linux embed PosixPath objects; unpickling them on
+# Windows fails unless we redirect PosixPath to PurePosixPath first.
+if platform.system() == "Windows":
+    pathlib.PosixPath = pathlib.PurePosixPath
 
 import torch
 from torch.distributed.checkpoint.format_utils import dcp_to_torch_save
@@ -72,6 +79,10 @@ def main():
 
     state_dict = torch.load(merged_path, map_location="cpu", weights_only=False)
     os.remove(merged_path)
+
+    # Accelerate FSDP wraps the entire model under a "model" key
+    if set(state_dict.keys()) == {"model"} and isinstance(state_dict["model"], dict):
+        state_dict = state_dict["model"]
     print(f"Merged {len(state_dict)} keys.")
 
     # Step 2: extract LoRA adapter weights

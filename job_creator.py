@@ -217,12 +217,16 @@ def main():
                             f"--num_processes={cfg['num_gpus']}"]
             else:
                 launcher = ["python"]
+            # For test-only mode, --model_path points to the fine-tuned checkpoint
+            # (run_model.py will auto-detect final_model/ inside it).
+            # For train/both, --model_path is the base model to start from.
+            model_path_arg = cfg["checkpoint_path"] if mode == "test" else cfg["model_path"]
             cmd_list = launcher + [
                 TARGET_SCRIPT,
                 "--mode", mode,
                 "--data_path",  cfg["dataset_path"],
                 "--train_output_dir", cfg["checkpoint_path"],
-                "--model_path", cfg["model_path"],
+                "--model_path", model_path_arg,
                 "--epochs",     str(cfg["epochs"]),
                 "--batch_size", str(cfg["batch_size"]),
                 "--seed",       str(cfg["seed"]),
