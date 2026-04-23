@@ -25,6 +25,8 @@ import subprocess
 import time
 from pathlib import Path
 
+from tqdm import tqdm
+
 import chess
 import chess.engine
 import pandas as pd
@@ -470,7 +472,7 @@ def evaluate_llm(eval_examples_df, model, tokenizer,
         subset = subset.head(max_positions)
 
     rows = []
-    for i, (_, row) in enumerate(subset.iterrows()):
+    for _, row in tqdm(subset.iterrows(), total=len(subset), desc="Evaluating"):
         actual = normalize_label(row["label"])
         precomputed_sf = row.get("precomputed_sf", "") if hasattr(row, "get") else ""
 
@@ -494,9 +496,6 @@ def evaluate_llm(eval_examples_df, model, tokenizer,
             rec[f"llm_hit@{k}"] = actual in llm_preds[:k]
             rec[f"llm_top_{k}"] = ", ".join(llm_preds[:k])
         rows.append(rec)
-
-        if (i + 1) % 10 == 0:
-            log.info("  %d/%d positions evaluated", i + 1, len(subset))
 
     detail_df = pd.DataFrame(rows)
     summary_rows = []
