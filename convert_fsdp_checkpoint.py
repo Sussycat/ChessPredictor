@@ -52,14 +52,14 @@ def main():
     parser.add_argument("--base_model", required=True,
                         help="Base model path (used in adapter_config.json).")
     parser.add_argument("--output_dir", default=None,
-                        help="Where to save PEFT adapter files. Defaults to <parent of checkpoint_dir>/final_model.")
+                        help="Where to save PEFT adapter files. Defaults to <parent of checkpoint_dir>/final.")
     args = parser.parse_args()
 
     fsdp_dir = os.path.join(args.checkpoint_dir, "pytorch_model_fsdp_0")
     if not os.path.isdir(fsdp_dir):
         raise FileNotFoundError(f"FSDP shard directory not found: {fsdp_dir}")
 
-    out_dir = args.output_dir or os.path.join(os.path.dirname(args.checkpoint_dir), "final_model")
+    out_dir = args.output_dir or os.path.join(os.path.dirname(args.checkpoint_dir), "final")
     os.makedirs(out_dir, exist_ok=True)
 
     # Step 1: merge FSDP shards into a single state dict file

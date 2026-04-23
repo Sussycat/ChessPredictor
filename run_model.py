@@ -628,7 +628,7 @@ def run_train(args):
 
     if _local_rank() == 0:
         best_ckpt = trainer.state.best_model_checkpoint or args.train_output_dir
-        peft_out = os.path.join(args.train_output_dir, "final_model")
+        peft_out = os.path.join(args.train_output_dir, "final")
         save_peft_from_fsdp(best_ckpt, args.model_path, peft_out)
 
     return model, tokenizer, test_ex_df, sf_path
@@ -641,7 +641,7 @@ def run_test(args, model=None, tokenizer=None, eval_examples_df=None, sf_path=No
     if model is None:
         if not args.model_path:
             raise ValueError("--model_path is required for test mode.")
-        final_model_path = os.path.join(args.model_path, "final_model")
+        final_model_path = os.path.join(args.model_path, "final")
         if os.path.isdir(final_model_path):
             log.info("Found final_model folder, using: %s", final_model_path)
             args.model_path = final_model_path
