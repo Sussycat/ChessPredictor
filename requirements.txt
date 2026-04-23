@@ -10,3 +10,4 @@ transformers
 bitsandbytes>=0.46.1
 accelerate
 deepspeed
+safetensors

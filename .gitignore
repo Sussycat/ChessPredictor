@@ -221,5 +221,5 @@ data/*
 !data/.gitkeep
 
 
-output/*
-!output/.gitkeep
+models/*
+!models/.gitkeep
