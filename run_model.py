@@ -477,7 +477,7 @@ def evaluate_llm(eval_examples_df, model, tokenizer,
     device = next(model.parameters()).device
     rows = []
 
-    for batch_start in tqdm(range(0, len(subset), batch_size), desc="Evaluating"):
+    for batch_start in tqdm(range(0, len(subset), batch_size), desc="Evaluating", disable=_local_rank() != 0):
         batch = subset.iloc[batch_start: batch_start + batch_size]
 
         prompt_texts = []
@@ -716,10 +716,13 @@ def run_test(args, model=None, tokenizer=None, eval_examples_df=None, sf_path=No
     if world_size > 1:
         tmp_path = Path(eval_out) / f"_tmp_rank{local_rank}.csv"
         detail_df.to_csv(tmp_path, index=False)
-        import torch.distributed as dist
-        dist.barrier()
         if local_rank != 0:
             return
+        # Wait for all other ranks to write their files
+        for r in range(1, world_size):
+            wait_path = Path(eval_out) / f"_tmp_rank{r}.csv"
+            while not wait_path.exists():
+                time.sleep(2)
         shards = [pd.read_csv(Path(eval_out) / f"_tmp_rank{r}.csv") for r in range(world_size)]
         detail_df = pd.concat(shards).sort_index().reset_index(drop=True)
         for r in range(world_size):
