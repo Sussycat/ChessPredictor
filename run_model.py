@@ -464,7 +464,7 @@ def generate_model_topk(prompt_moves, model, tokenizer, k=5, max_new_tokens=8,
 
 
 def evaluate_llm(eval_examples_df, model, tokenizer,
-                 k_values=(1, 3, 5), max_positions=None, batch_size=16):
+                 k_values=(1, 3, 5), max_positions=None, batch_size=16, print_preds=False):
     ordered_k = tuple(sorted(set(k_values)))
     max_k = max(ordered_k)
     subset = eval_examples_df.reset_index(drop=True)
@@ -520,6 +520,10 @@ def evaluate_llm(eval_examples_df, model, tokenizer,
                 norm = normalize_label(text)
                 if norm and norm not in preds:
                     preds.append(norm)
+
+            if print_preds:
+                print(f"\n--- Prompt ---\n{prompt_texts[i]}")
+                print(f"--- Actual: {actual} | Predicted: {preds} ---")
 
             rec = {
                 "game_id": row.get("game_id"),
@@ -706,6 +710,7 @@ def run_test(args, model=None, tokenizer=None, eval_examples_df=None, sf_path=No
         tokenizer=tokenizer,
         k_values=tuple(args.eval_k),
         batch_size=args.batch_size,
+        print_preds=getattr(args, "print_preds", False),
     )
 
     eval_out = args.eval_output_dir or args.train_output_dir
@@ -779,6 +784,8 @@ def parse_args():
                    help="k values for top-k evaluation.")
     p.add_argument("--max_eval_positions", type=int, default=50,
                    help="Max positions to evaluate (0 = all).")
+    p.add_argument("--print", action="store_true", dest="print_preds",
+                   help="Print prompt and predictions for each position during test.")
     p.add_argument("--engine_depth", type=int, default=10,
                    help="Stockfish search depth used during evaluation.")
 
