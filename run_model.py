@@ -535,15 +535,19 @@ def evaluate_llm(eval_examples_df, model, tokenizer,
 
     tokenizer.padding_side = orig_padding_side
     detail_df = pd.DataFrame(rows)
-    summary_rows = []
+    return detail_df, _make_summary(detail_df, ordered_k)
+
+
+def _make_summary(detail_df, ordered_k):
+    rows = []
     for k in ordered_k:
-        summary_rows.append({
+        rows.append({
             "k": k,
             "positions": len(detail_df),
             "llm_pass@k": detail_df[f"llm_hit@{k}"].mean(),
             "llm_avg_ms": detail_df["llm_inference_ms"].mean(),
         })
-    return detail_df, pd.DataFrame(summary_rows)
+    return pd.DataFrame(rows)
 
 
 # ---------------------------------------------------------------------------
@@ -671,15 +675,15 @@ def run_train(args):
 
 
 def run_test(args, model=None, tokenizer=None, eval_examples_df=None, sf_path=None):
-    if _local_rank() != 0:
-        return
+    local_rank = _local_rank()
+    world_size = int(os.environ.get("WORLD_SIZE", 1))
 
     if model is None:
         if not args.model_path:
             raise ValueError("--model_path is required for test mode.")
         final_model_path = os.path.join(args.model_path, "final")
         if os.path.isdir(final_model_path):
-            log.info("Found final_model folder, using: %s", final_model_path)
+            log.info("Found final folder, using: %s", final_model_path)
             args.model_path = final_model_path
         log.info("Loading checkpoint: %s", args.model_path)
         model, tokenizer = load_lora_checkpoint(args.model_path, use_4bit=not args.use_16bit)
@@ -689,24 +693,43 @@ def run_test(args, model=None, tokenizer=None, eval_examples_df=None, sf_path=No
         _, _, eval_examples_df = get_data_splits(args.data_path, seed=args.seed)
         eval_examples_df = eval_examples_df.reset_index(drop=True)
 
-    n_eval = min(args.max_eval_positions, len(eval_examples_df)) if args.max_eval_positions else len(eval_examples_df)
-    log.info("Evaluating %d positions...", n_eval)
+    if args.max_eval_positions:
+        eval_examples_df = eval_examples_df.head(args.max_eval_positions)
+
+    # Each rank processes its shard of the dataset
+    shard = eval_examples_df.iloc[local_rank::world_size].reset_index(drop=True)
+    log.info("Rank %d/%d evaluating %d positions...", local_rank, world_size, len(shard))
 
     detail_df, summary_df = evaluate_llm(
-        eval_examples_df=eval_examples_df,
+        eval_examples_df=shard,
         model=model,
         tokenizer=tokenizer,
         k_values=tuple(args.eval_k),
-        max_positions=args.max_eval_positions or None,
         batch_size=args.batch_size,
     )
-
-    log.info("\n%s\nLLM PASS@K SUMMARY\n%s\n%s",
-             "=" * 60, summary_df.round(4).to_string(index=False), "=" * 60)
 
     eval_out = args.eval_output_dir or args.train_output_dir
     if eval_out:
         Path(eval_out).mkdir(parents=True, exist_ok=True)
+
+    # Save per-rank shard, then rank 0 merges
+    if world_size > 1:
+        tmp_path = Path(eval_out) / f"_tmp_rank{local_rank}.csv"
+        detail_df.to_csv(tmp_path, index=False)
+        import torch.distributed as dist
+        dist.barrier()
+        if local_rank != 0:
+            return
+        shards = [pd.read_csv(Path(eval_out) / f"_tmp_rank{r}.csv") for r in range(world_size)]
+        detail_df = pd.concat(shards).sort_index().reset_index(drop=True)
+        for r in range(world_size):
+            (Path(eval_out) / f"_tmp_rank{r}.csv").unlink()
+        summary_df = _make_summary(detail_df, tuple(sorted(set(args.eval_k))))
+
+    log.info("\n%s\nLLM PASS@K SUMMARY\n%s\n%s",
+             "=" * 60, summary_df.round(4).to_string(index=False), "=" * 60)
+
+    if eval_out:
         detail_df.to_csv(Path(eval_out) / "eval_detail.csv", index=False)
         summary_df.to_csv(Path(eval_out) / "eval_summary.csv", index=False)
         log.info("Eval CSVs saved to %s", eval_out)

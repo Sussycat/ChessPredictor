@@ -210,11 +210,14 @@ def main():
             is_train = mode in ("train", "both")
             use_deepspeed = cfg["use_16bit"] and cfg["num_gpus"] > 1 and is_train
             use_fsdp = not cfg["use_16bit"] and cfg["num_gpus"] > 1 and is_train and cfg["fsdp_config"]
+            use_multi = cfg["num_gpus"] > 1 and mode == "test"
             if use_deepspeed:
                 launcher = ["deepspeed", f"--num_gpus={cfg['num_gpus']}"]
             elif use_fsdp:
                 launcher = ["accelerate", "launch", "--config_file", cfg["fsdp_config"],
                             f"--num_processes={cfg['num_gpus']}"]
+            elif use_multi:
+                launcher = ["accelerate", "launch", f"--num_processes={cfg['num_gpus']}"]
             else:
                 launcher = ["python"]
             # For test-only mode, --model_path points to the fine-tuned checkpoint
