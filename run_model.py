@@ -221,35 +221,24 @@ def build_examples(df_mate, seed=42):
     return examples
 
 
-def build_prompt(prompt_moves, engine=None, k=10, depth=1, precomputed_sf="", force_stockfish=False,
-                 white_rating=0, black_rating=0):
-    if precomputed_sf and not force_stockfish:
-        sf_with_p = precomputed_sf.split()
-    else:
-        if engine is None:
-            raise RuntimeError(
-                "Stockfish engine required but not available. "
-                "Pass --stockfish_path or ensure precomputed predictions exist in the dataset."
-            )
-        sf_moves = get_stockfish_topk_moves(prompt_moves, engine, k=k, depth=depth)
-        sf_with_p = add_p_to_pawn_moves_list(sf_moves)
+def build_prompt(prompt_moves, white_rating=0, black_rating=0):
+    legal_moves = get_legal_moves(prompt_moves)
+    legal_with_p = add_p_to_pawn_moves_list(legal_moves)
     clean_game = re.sub(r"[?!]", "", prompt_moves)
     prompt_text = (
         "Chess move prediction.\n"
         f"White Elo: {white_rating} | Black Elo: {black_rating}\n"
         f"Game: {clean_game}\n"
-        f"Legal: {' '.join(sf_with_p)}\n"
+        f"Legal: {' '.join(legal_with_p)}\n"
         "Next move from legal list: "
     )
-    return prompt_text, sf_with_p
+    return prompt_text, legal_with_p
 
 
-def make_preprocess_fn(tokenizer, engine=None, max_length=280, force_stockfish=False):
+def make_preprocess_fn(tokenizer, max_length=280):
     def preprocess(example):
         prompt_text, _ = build_prompt(
-            example["prompt"], engine,
-            precomputed_sf=example.get("precomputed_sf", ""),
-            force_stockfish=force_stockfish,
+            example["prompt"],
             white_rating=example.get("white_rating", 0),
             black_rating=example.get("black_rating", 0),
         )
@@ -434,10 +423,9 @@ def load_lora_checkpoint(checkpoint_path, use_4bit=True):
 # ---------------------------------------------------------------------------
 
 def generate_model_topk(prompt_moves, model, tokenizer, k=5, max_new_tokens=8,
-                        precomputed_sf="", white_rating=0, black_rating=0):
+                        white_rating=0, black_rating=0):
     prompt_text, _ = build_prompt(
-        prompt_moves, engine=None,
-        precomputed_sf=precomputed_sf, force_stockfish=False,
+        prompt_moves,
         white_rating=white_rating, black_rating=black_rating,
     )
     device = next(model.parameters()).device
@@ -482,10 +470,8 @@ def evaluate_llm(eval_examples_df, model, tokenizer,
 
         prompt_texts = []
         for _, row in batch.iterrows():
-            precomputed_sf = row.get("precomputed_sf", "") if hasattr(row, "get") else ""
             prompt_text, _ = build_prompt(
-                row["prompt"], engine=None,
-                precomputed_sf=precomputed_sf, force_stockfish=False,
+                row["prompt"],
                 white_rating=row.get("white_rating", 0),
                 black_rating=row.get("black_rating", 0),
             )
@@ -564,39 +550,12 @@ def run_train(args):
 
     model, tokenizer = load_base_model(args.model_path, use_4bit=not args.use_16bit)
 
-    # Use precomputed Stockfish predictions from the dataset when available.
-    # The engine is still needed for eval baseline; for preprocessing it is
-    # only required when --force_stockfish is set or any example lacks predictions.
-    all_precomputed = all(
-        "precomputed_sf" in df.columns
-        and df["precomputed_sf"].str.strip().str.len().gt(0).all()
-        for df in [train_ex_df, eval_ex_df]
-    )
-    need_engine_for_preprocess = args.force_stockfish or not all_precomputed
-
-    sf_path = args.stockfish_path or detect_stockfish_path()
-    if sf_path is None and need_engine_for_preprocess:
-        raise RuntimeError("Stockfish not found. Install it or pass --stockfish_path.")
-    if sf_path is None:
-        log.info("No Stockfish found; using precomputed predictions for preprocessing.")
-    else:
-        log.info("Stockfish: %s", sf_path)
-
     train_raw = Dataset.from_pandas(train_ex_df.reset_index(drop=True))
     eval_raw  = Dataset.from_pandas(eval_ex_df.reset_index(drop=True))
 
-    def _run_map(engine_):
-        force = args.force_stockfish if engine_ is not None else False
-        fn = make_preprocess_fn(tokenizer, engine_, max_length=args.max_output_length, force_stockfish=force)
-        tr = train_raw.map(fn, remove_columns=train_raw.column_names)
-        ev = eval_raw.map(fn, remove_columns=eval_raw.column_names)
-        return tr, ev
-
-    if need_engine_for_preprocess:
-        with chess.engine.SimpleEngine.popen_uci(sf_path) as engine:
-            train_dataset, eval_dataset = _run_map(engine)
-    else:
-        train_dataset, eval_dataset = _run_map(None)
+    fn = make_preprocess_fn(tokenizer, max_length=args.max_output_length)
+    train_dataset = train_raw.map(fn, remove_columns=train_raw.column_names)
+    eval_dataset  = eval_raw.map(fn, remove_columns=eval_raw.column_names)
     log.info("Train=%d | Eval=%d", len(train_dataset), len(eval_dataset))
 
     model = get_peft_model(
