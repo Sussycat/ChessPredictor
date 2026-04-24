@@ -464,39 +464,76 @@ def generate_model_topk(prompt_moves, model, tokenizer, k=5, max_new_tokens=8,
 
 
 def evaluate_llm(eval_examples_df, model, tokenizer,
-                 k_values=(1, 3, 5), max_positions=None):
+                 k_values=(1, 3, 5), max_positions=None, batch_size=16):
     ordered_k = tuple(sorted(set(k_values)))
     max_k = max(ordered_k)
     subset = eval_examples_df.reset_index(drop=True)
     if max_positions:
         subset = subset.head(max_positions)
 
+    orig_padding_side = tokenizer.padding_side
+    tokenizer.padding_side = "left"
+
+    device = next(model.parameters()).device
     rows = []
-    for _, row in tqdm(subset.iterrows(), total=len(subset), desc="Evaluating"):
-        actual = normalize_label(row["label"])
-        precomputed_sf = row.get("precomputed_sf", "") if hasattr(row, "get") else ""
+
+    for batch_start in tqdm(range(0, len(subset), batch_size), desc="Evaluating"):
+        batch = subset.iloc[batch_start: batch_start + batch_size]
+
+        prompt_texts = []
+        for _, row in batch.iterrows():
+            precomputed_sf = row.get("precomputed_sf", "") if hasattr(row, "get") else ""
+            prompt_text, _ = build_prompt(
+                row["prompt"], engine=None,
+                precomputed_sf=precomputed_sf, force_stockfish=False,
+                white_rating=row.get("white_rating", 0),
+                black_rating=row.get("black_rating", 0),
+            )
+            prompt_texts.append(prompt_text)
+
+        inputs = tokenizer(prompt_texts, return_tensors="pt", padding=True).to(device)
+        prompt_lens = inputs["attention_mask"].sum(dim=1).tolist()
 
         t0 = time.time()
-        llm_preds = generate_model_topk(
-            row["prompt"], model, tokenizer, k=max_k,
-            precomputed_sf=precomputed_sf,
-            white_rating=row.get("white_rating", 0),
-            black_rating=row.get("black_rating", 0),
-        )
-        llm_ms = (time.time() - t0) * 1000
+        with torch.inference_mode():
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=8,
+                num_beams=max(max_k, 2),
+                num_return_sequences=max_k,
+                do_sample=False,
+                early_stopping=True,
+                pad_token_id=tokenizer.eos_token_id,
+                eos_token_id=tokenizer.eos_token_id,
+            )
+        batch_ms = (time.time() - t0) * 1000
+        per_ms = batch_ms / len(batch)
 
-        rec = {
-            "game_id": row.get("game_id"),
-            "prompt": row["prompt"],
-            "actual_label": actual,
-            "precomputed_sf": precomputed_sf,
-            "llm_inference_ms": llm_ms,
-        }
-        for k in ordered_k:
-            rec[f"llm_hit@{k}"] = actual in llm_preds[:k]
-            rec[f"llm_top_{k}"] = ", ".join(llm_preds[:k])
-        rows.append(rec)
+        # outputs shape: [batch_size * num_return_sequences, seq_len]
+        for i, (_, row) in enumerate(batch.iterrows()):
+            actual = normalize_label(row["label"])
+            precomputed_sf = row.get("precomputed_sf", "") if hasattr(row, "get") else ""
+            seqs = outputs[i * max_k: (i + 1) * max_k]
+            preds = []
+            for seq in seqs:
+                text = tokenizer.decode(seq[int(prompt_lens[i]):], skip_special_tokens=True).strip()
+                norm = normalize_label(text)
+                if norm and norm not in preds:
+                    preds.append(norm)
 
+            rec = {
+                "game_id": row.get("game_id"),
+                "prompt": row["prompt"],
+                "actual_label": actual,
+                "precomputed_sf": precomputed_sf,
+                "llm_inference_ms": per_ms,
+            }
+            for k in ordered_k:
+                rec[f"llm_hit@{k}"] = actual in preds[:k]
+                rec[f"llm_top_{k}"] = ", ".join(preds[:k])
+            rows.append(rec)
+
+    tokenizer.padding_side = orig_padding_side
     detail_df = pd.DataFrame(rows)
     summary_rows = []
     for k in ordered_k:
@@ -661,6 +698,7 @@ def run_test(args, model=None, tokenizer=None, eval_examples_df=None, sf_path=No
         tokenizer=tokenizer,
         k_values=tuple(args.eval_k),
         max_positions=args.max_eval_positions or None,
+        batch_size=args.batch_size,
     )
 
     log.info("\n%s\nLLM PASS@K SUMMARY\n%s\n%s",
