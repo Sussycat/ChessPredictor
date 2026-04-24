@@ -712,6 +712,8 @@ def parse_args():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     p.add_argument("--mode", choices=["train", "test", "both"], help="Operation mode.")
+    p.add_argument("--retrain", action="store_true",
+                   help="Force retraining even if a final/ adapter already exists.")
 
     # Required paths
     p.add_argument("--data_path", required=True,
@@ -779,14 +781,23 @@ def main():
         login(token=hf_token, add_to_git_credential=False)
         log.info("Logged into HuggingFace.")
 
+    final_exists = os.path.isdir(os.path.join(args.train_output_dir, "final"))
+
     if args.mode == "train":
-        run_train(args)
+        if final_exists and not args.retrain:
+            log.info("final/ already exists, skipping train. Use --retrain to force.")
+        else:
+            run_train(args)
     elif args.mode == "test":
         run_test(args)
     else:  # both
-        model, tokenizer, test_ex_df, sf_path = run_train(args)
-        run_test(args, model=model, tokenizer=tokenizer,
-                 eval_examples_df=test_ex_df, sf_path=sf_path)
+        if final_exists and not args.retrain:
+            log.info("final/ already exists, skipping train. Use --retrain to force.")
+            run_test(args)
+        else:
+            model, tokenizer, test_ex_df, sf_path = run_train(args)
+            run_test(args, model=model, tokenizer=tokenizer,
+                     eval_examples_df=test_ex_df, sf_path=sf_path)
 
 
 if __name__ == "__main__":
