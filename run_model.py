@@ -492,7 +492,7 @@ def evaluate_llm(eval_examples_df, model, tokenizer,
             prompt_texts.append(prompt_text)
 
         inputs = tokenizer(prompt_texts, return_tensors="pt", padding=True).to(device)
-        prompt_lens = inputs["attention_mask"].sum(dim=1).tolist()
+        input_len = inputs["input_ids"].shape[1]  # padded length, same for all in batch
 
         t0 = time.time()
         with torch.inference_mode():
@@ -516,7 +516,7 @@ def evaluate_llm(eval_examples_df, model, tokenizer,
             seqs = outputs[i * max_k: (i + 1) * max_k]
             preds = []
             for seq in seqs:
-                text = tokenizer.decode(seq[int(prompt_lens[i]):], skip_special_tokens=True).strip()
+                text = tokenizer.decode(seq[input_len:], skip_special_tokens=True).strip()
                 norm = normalize_label(text)
                 if norm and norm not in preds:
                     preds.append(norm)
