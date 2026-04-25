@@ -507,7 +507,7 @@ def evaluate_llm(eval_examples_df, model, tokenizer,
             turn_index = row.get("turn_index")
             id = row.get("id")
             if print_preds:
-                print(f"--- ID: {id} | Move {turn_index} | Prompt ---\n{prompt_texts[i]}")
+                print(f"\n--- ID: {id} | Move {turn_index} | Prompt ---\n{prompt_texts[i]}")
                 print(f"--- Actual: {actual} | Predicted: {preds} ---")
 
             rec = {
