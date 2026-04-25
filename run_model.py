@@ -690,17 +690,28 @@ def run_test(args, model=None, tokenizer=None, eval_examples_df=None, sf_path=No
 
     # Save per-rank shard, then rank 0 merges
     if world_size > 1:
-        tmp_path = Path(eval_out) / f"_tmp_rank{local_rank}.csv"
-        detail_df.to_csv(tmp_path, index=False)
+        # Write to a staging path then atomically rename so rank 0 never reads a partial file.
+        stage_path = Path(eval_out) / f"_tmp_rank{local_rank}.csv.staging"
+        ready_path = Path(eval_out) / f"_tmp_rank{local_rank}.csv"
+        # Remove any stale ready file from a previous crashed run before writing.
+        ready_path.unlink(missing_ok=True)
+        detail_df.to_csv(stage_path, index=False)
+        stage_path.rename(ready_path)
         if local_rank != 0:
             return
-        # Wait for all other ranks to write their files
+        # Wait for all other ranks to publish their ready files.
         for r in range(1, world_size):
             wait_path = Path(eval_out) / f"_tmp_rank{r}.csv"
             while not wait_path.exists():
                 time.sleep(2)
         shards = [pd.read_csv(Path(eval_out) / f"_tmp_rank{r}.csv") for r in range(world_size)]
-        detail_df = pd.concat(shards).sort_index().reset_index(drop=True)
+        # Restore original dataset order: each shard took rows local_rank::world_size.
+        merged = pd.concat(shards, ignore_index=True)
+        # Re-sort by the original position encoded in the interleaved shard indices.
+        orig_indices = []
+        for r in range(world_size):
+            orig_indices.extend(range(r, len(merged), world_size))
+        detail_df = merged.iloc[pd.Series(orig_indices).argsort()].reset_index(drop=True)
         for r in range(world_size):
             (Path(eval_out) / f"_tmp_rank{r}.csv").unlink()
         summary_df = _make_summary(detail_df, tuple(sorted(set(args.eval_k))))
