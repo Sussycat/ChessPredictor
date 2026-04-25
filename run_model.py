@@ -344,6 +344,9 @@ def save_peft_from_fsdp(fsdp_checkpoint_dir, base_model_path, output_dir):
     state_dict = torch.load(merged_path, map_location="cpu", weights_only=False)
     os.remove(merged_path)
 
+    if set(state_dict.keys()) == {"model"} and isinstance(state_dict["model"], dict):
+        state_dict = state_dict["model"]
+
     adapter_state = {}
     for key, tensor in state_dict.items():
         if "lora_" not in key:
@@ -630,11 +633,19 @@ def run_train(args):
     log.info("Training done. Outputs: %s", args.train_output_dir)
 
     if _local_rank() == 0:
-        best_ckpt = trainer.state.best_model_checkpoint or args.train_output_dir
+        best_ckpt = trainer.state.best_model_checkpoint
+        if not best_ckpt:
+            # Fall back to latest checkpoint in output dir
+            ckpts = sorted(
+                [d for d in Path(args.train_output_dir).iterdir()
+                 if d.is_dir() and d.name.startswith("checkpoint-")],
+                key=lambda p: int(p.name.split("-")[-1])
+            )
+            best_ckpt = str(ckpts[-1]) if ckpts else args.train_output_dir
         peft_out = os.path.join(args.train_output_dir, "final")
         save_peft_from_fsdp(best_ckpt, args.model_path, peft_out)
 
-    return model, tokenizer, test_ex_df, sf_path
+    return model, tokenizer, test_ex_df
 
 
 def run_test(args, model=None, tokenizer=None, eval_examples_df=None, sf_path=None):
@@ -795,9 +806,9 @@ def main():
             log.info("final/ already exists, skipping train. Use --retrain to force.")
             run_test(args)
         else:
-            model, tokenizer, test_ex_df, sf_path = run_train(args)
+            model, tokenizer, test_ex_df = run_train(args)
             run_test(args, model=model, tokenizer=tokenizer,
-                     eval_examples_df=test_ex_df, sf_path=sf_path)
+                     eval_examples_df=test_ex_df)
 
 
 if __name__ == "__main__":
