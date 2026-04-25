@@ -150,6 +150,8 @@ def main():
     parser.add_argument("--slurm-dir", default=os.path.join(main_dir, "jobs"))
     parser.add_argument("--retrain", action="store_true",
                         help="Pass --retrain to run_model.py to force retraining.")
+    parser.add_argument("--print", action="store_true", dest="print_preds",
+                        help="Pass --print to run_model.py to print predictions during test.")
     args = parser.parse_args()
 
     if args.dry_run:
@@ -250,6 +252,8 @@ def main():
                 cmd_list += ["--hf_token", args.hf_token]
             if args.retrain and mode in ("train", "both"):
                 cmd_list += ["--retrain"]
+            if args.print_preds and mode in ("test", "both"):
+                cmd_list += ["--print"]
             if cfg["max_eval_positions"] is not None:
                 cmd_list += ["--max_eval_positions", str(cfg["max_eval_positions"])]
             if cfg["engine_depth"] is not None:

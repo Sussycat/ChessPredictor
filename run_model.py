@@ -655,10 +655,15 @@ def run_test(args, model=None, tokenizer=None, eval_examples_df=None, sf_path=No
     if model is None:
         if not args.model_path:
             raise ValueError("--model_path is required for test mode.")
-        final_model_path = os.path.join(args.model_path, "final")
-        if os.path.isdir(final_model_path):
-            log.info("Found final folder, using: %s", final_model_path)
-            args.model_path = final_model_path
+        # Check model_path/final, then train_output_dir/final as fallback
+        for candidate in [
+            os.path.join(args.model_path, "final"),
+            os.path.join(args.train_output_dir, "final"),
+        ]:
+            if os.path.isdir(candidate):
+                log.info("Found final folder, using: %s", candidate)
+                args.model_path = candidate
+                break
         log.info("Loading checkpoint: %s", args.model_path)
         model, tokenizer = load_lora_checkpoint(args.model_path, use_4bit=not args.use_16bit)
 
