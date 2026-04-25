@@ -201,16 +201,11 @@ def build_examples(df_mate, seed=42):
 
         sf_col = getattr(row, "stockfish_predictions", None)
         ply_preds = sf_col.split(";") if sf_col and isinstance(sf_col, str) and sf_col.strip() else []
-        valid_with_sf = [m for m in valid if m < len(ply_preds) and ply_preds[m].strip()]
-        if ply_preds and not valid_with_sf:
-            continue  # predictions exist but all cut off before any black-move position
 
-        # Use every valid black-move position as a separate training/eval example
-        positions = valid_with_sf if valid_with_sf else valid
-        for prompt_end in positions:
+        for prompt_end in valid:
             precomputed_sf = ply_preds[prompt_end].strip() if prompt_end < len(ply_preds) else ""
             examples.append({
-                "game_id": getattr(row, "game_id", None),
+                "id": getattr(row, "id", None),
                 "prompt": " ".join(tokens[:prompt_end]),
                 "label": tokens[prompt_end],
                 "turn_index": prompt_end,
@@ -266,14 +261,14 @@ def make_preprocess_fn(tokenizer, max_length=280):
 
 
 def build_split_indices(frame, eval_fraction=0.1, seed=42):
-    if "game_id" in frame.columns and frame["game_id"].notna().any():
-        unique_games = frame["game_id"].astype(str).unique().tolist()
+    if "id" in frame.columns and frame["id"].notna().any():
+        unique_games = frame["id"].astype(str).unique().tolist()
         rng = random.Random(seed)
         rng.shuffle(unique_games)
         n_eval = max(1, int(len(unique_games) * eval_fraction))
         eval_ids = set(unique_games[-n_eval:])
-        eval_idx = frame.index[frame["game_id"].astype(str).isin(eval_ids)].tolist()
-        train_idx = frame.index[~frame["game_id"].astype(str).isin(eval_ids)].tolist()
+        eval_idx = frame.index[frame["id"].astype(str).isin(eval_ids)].tolist()
+        train_idx = frame.index[~frame["id"].astype(str).isin(eval_ids)].tolist()
     else:
         indices = list(frame.index)
         rng = random.Random(seed)
@@ -501,7 +496,6 @@ def evaluate_llm(eval_examples_df, model, tokenizer,
         # outputs shape: [batch_size * num_return_sequences, seq_len]
         for i, (_, row) in enumerate(batch.iterrows()):
             actual = normalize_label(row["label"])
-            precomputed_sf = row.get("precomputed_sf", "") if hasattr(row, "get") else ""
             seqs = outputs[i * max_k: (i + 1) * max_k]
             preds = []
             for seq in seqs:
@@ -510,15 +504,17 @@ def evaluate_llm(eval_examples_df, model, tokenizer,
                 if norm and norm not in preds:
                     preds.append(norm)
 
+            turn_index = row.get("turn_index")
+            id = row.get("id")
             if print_preds:
-                print(f"\n--- Prompt ---\n{prompt_texts[i]}")
+                print(f"--- ID: {id} | Move {turn_index} | Prompt ---\n{prompt_texts[i]}")
                 print(f"--- Actual: {actual} | Predicted: {preds} ---")
 
             rec = {
-                "game_id": row.get("game_id"),
+                "id": id,
+                "turn_index": turn_index,
                 "prompt": row["prompt"],
                 "actual_label": actual,
-                "precomputed_sf": precomputed_sf,
                 "llm_inference_ms": per_ms,
             }
             for k in ordered_k:
