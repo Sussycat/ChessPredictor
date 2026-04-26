@@ -65,6 +65,8 @@ def main():
                         help="Path to all_d1_sf_d5.csv to merge Stockfish depth-5 predictions.")
     parser.add_argument("--sf_d10", default=None,
                         help="Path to all_d1_sf_d10.csv to merge Stockfish depth-10 predictions.")
+    parser.add_argument("--sf_d15", default=None,
+                        help="Path to all_d1_sf_d15.csv to merge Stockfish depth-15 predictions.")
     args = parser.parse_args()
 
     left  = load(args.left)
@@ -149,7 +151,7 @@ def main():
         merged = merged.drop(columns=["llm_inference_ms_t1", "llm_inference_ms_t2"])
 
     # Merge Stockfish predictions on (id_t2, turn_index_t2)
-    for sf_path, label in [(args.sf_d5, "sf_d5"), (args.sf_d10, "sf_d10")]:
+    for sf_path, label in [(args.sf_d5, "sf_d5"), (args.sf_d10, "sf_d10"), (args.sf_d15, "sf_d15")]:
         if sf_path:
             sf = pd.read_csv(sf_path)
             sf = sf.rename(columns={"id": "id_t2", "turn_index": "turn_index_t2"})
