@@ -94,6 +94,7 @@ def normalize_move(move):
 
 def process_csv(csv_in, csv_out, engine, ks, depths):
     df = pd.read_csv(csv_in)
+    df = df[(df["victory_status"] == "mate") & (df["turns"] > 35)]
     max_k = max(ks)
     rows = []
 

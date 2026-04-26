@@ -467,13 +467,15 @@ def evaluate_llm(eval_examples_df, model, tokenizer,
         batch = subset.iloc[batch_start: batch_start + batch_size]
 
         prompt_texts = []
+        legal_moves_batch = []
         for _, row in batch.iterrows():
-            prompt_text, _ = build_prompt(
+            prompt_text, legal_with_p = build_prompt(
                 row["prompt"],
                 white_rating=row.get("white_rating", 0),
                 black_rating=row.get("black_rating", 0),
             )
             prompt_texts.append(prompt_text)
+            legal_moves_batch.append(" ".join(legal_with_p))
 
         inputs = tokenizer(prompt_texts, return_tensors="pt", padding=True).to(device)
         input_len = inputs["input_ids"].shape[1]  # padded length, same for all in batch
@@ -515,6 +517,7 @@ def evaluate_llm(eval_examples_df, model, tokenizer,
                 "turn_index": turn_index,
                 "prompt": row["prompt"],
                 "actual_label": actual,
+                "legal_moves": legal_moves_batch[i],
                 "llm_inference_ms": per_ms,
             }
             for k in ordered_k:
