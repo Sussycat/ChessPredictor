@@ -307,12 +307,28 @@ The preprocessing pipeline applies several filters to ensure high-quality evalua
 3. **Full-Move Index**: Use moves from indices 11-33 (avoids memorized openings, simple endgames)
 4. **Elo Stratification**: Separate test examples by opponent Elo bucket for skill-aware evaluation
 
-### Extract from Lichess
+### Download from HuggingFace
 
-Download raw games from the Lichess dataset:
+The Lichess dataset is available on HuggingFace. Download it first:
 
 ```bash
-python lichess_extractor.py \
+# Using HuggingFace CLI
+huggingface-cli download Lichess/standard-chess-games --repo-type dataset --local-dir ./raw_data
+
+# Or using Python
+from datasets import load_dataset
+dataset = load_dataset("Lichess/standard-chess-games")
+dataset.save_to_disk("./raw_data")
+```
+
+See [Lichess Dataset on HuggingFace](https://huggingface.co/datasets/Lichess/standard-chess-games) for details.
+
+### Extract from Lichess
+
+Filter and extract games by Elo rating:
+
+```bash
+python scripts/lichess_extractor.py \
   --seed 42 \
   --num_splits 1 \
   --split_size 200000 \
