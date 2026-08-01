@@ -10,7 +10,7 @@
 [**Evaluation**](#evaluation) |
 [**Results**](#results)
 
-**Authors**: Hung Nguyen, Mukil Senthilkumar, Seyed Ali Ghazi Asgar, Arif Nizami
+**Authors**: [Hung Nguyen](https://www.linkedin.com/in/hung-nguyen-3b63191a0/), Mukil Senthilkumar, Seyed Ali Ghazi Asgar, Arif Nizami
 
 ## Overview
 
