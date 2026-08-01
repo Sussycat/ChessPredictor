@@ -1,10 +1,13 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import argparse
 import pandas as pd
 import chess
 import chess.engine
 import re
 from datetime import datetime
-from pathlib import Path
 from sklearn.model_selection import train_test_split
 try:
     from tqdm import tqdm

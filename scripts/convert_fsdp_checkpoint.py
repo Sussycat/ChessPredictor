@@ -7,11 +7,15 @@ saving adapter_config.json + adapter_model.safetensors so the checkpoint
 can be loaded with PeftModel.from_pretrained().
 
 Usage (run on the cluster, single GPU is fine):
-    python convert_fsdp_checkpoint.py \
+    python scripts/convert_fsdp_checkpoint.py \
         --checkpoint_dir /scratch/user/nguye3hv/checkpoints/all_d1/Qwen3.5-9B/checkpoint-1612 \
         --base_model /scratch/user/nguye3hv/models/Qwen3.5-9B \
         --output_dir /scratch/user/nguye3hv/checkpoints/all_d1/Qwen3.5-9B/checkpoint-1612-peft
 """
+
+import sys
+from pathlib import Path as PathlibPath
+sys.path.insert(0, str(PathlibPath(__file__).parent.parent))
 
 import argparse
 import json
