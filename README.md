@@ -12,31 +12,9 @@
 
 **Authors**: Hung Nguyen, Mukil Senthilkumar, Seyed Ali Ghazi Asgar, Arif Nizami
 
-This project explores using fine-tuned Large Language Models to predict human chess moves for **predictive caching** in interactive chess applications. Instead of waiting for engine computation on every move, we precompute likely human moves and cache responses, reducing user-perceived latency.
-
----
-
 ## Overview
 
-### Problem
-Chess engines are highly effective at finding the strongest moves, but they are not explicitly designed to predict what human players will actually choose. This gap creates a latency problem in interactive chess applications:
-- Traditional approach: wait for engine response after move is played
-- Our approach: **predict likely human moves in advance** and precompute engine responses
-
-### Solution
-We fine-tune **Qwen3.5-9B** with LoRA on 200K Lichess game positions, conditioning predictions on:
-- Board state (FEN notation)
-- Player skill level (Elo ratings)
-- Legal moves available
-- Move history
-
-The model predicts candidate human moves; Stockfish precomputes responses for these candidates. When the actual move matches a prediction, the cached response is served immediately—reducing latency from 196-264ms to ~5ms.
-
-### Key Results
-- **Top-1 accuracy**: Qwen3.5-9B outperforms Stockfish baseline by 5-8% across all skill levels
-- **Top-3 accuracy**: Continues to outperform, especially for top-1 and medium/hard players
-- **Top-5 accuracy**: Margin narrows but still competitive
-- **Skill stratification**: Model trained on all Elo levels; evaluated separately for Easy/Medium/Hard
+This project explores using fine-tuned Large Language Models to predict human chess moves for **predictive caching** in interactive chess applications. Instead of waiting for engine computation on every move, we precompute likely human moves and cache responses, reducing user-perceived latency. Chess engines are highly effective at finding the strongest moves, but they are not explicitly designed to predict what human players will actually choose. We address this gap by fine-tuning **Qwen3.5-9B** with LoRA on 200K Lichess game positions, conditioning predictions on board state (FEN notation), player skill level (Elo ratings), legal moves available, and move history. When the actual move matches a prediction, the cached response is served immediately—reducing latency from 196-264ms to ~5ms. Our experiments show that Qwen3.5-9B outperforms Stockfish baselines by 5-8% on top-1 accuracy across all skill levels, with continued advantages on top-3 predictions, especially for medium/hard players. The model is trained on all Elo levels and evaluated separately for Easy/Medium/Hard skill stratification.
 
 ---
 
